@@ -14,6 +14,7 @@ class FileInfo(NamedTuple):
     """Store file information in an immutable structure"""
     path: Path
     size: int
+    is_icloud: bool = False
 
 class DiskScanner:
     """Core scanning logic for analyzing disk usage"""
@@ -21,6 +22,7 @@ class DiskScanner:
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
         self._scanned_paths: Dict[Path, int] = {}
+        self._icloud_base = Path.home() / "Library/Mobile Documents"
         
     def scan_directory(self, root_path: Path) -> Tuple[List[FileInfo], List[FileInfo]]:
         """
@@ -45,7 +47,8 @@ class DiskScanner:
                     if path.is_file():
                         try:
                             size = path.stat().st_size
-                            self._scanned_paths[path] = size
+                            is_icloud = self._icloud_base in path.parents
+                            self._scanned_paths[path] = (size, is_icloud)
                         except (PermissionError, OSError) as e:
                             self.console.print(f"[yellow]Warning: Cannot access {path}: {e}")
                     progress.update(task)
@@ -53,7 +56,7 @@ class DiskScanner:
                 self.console.print("\n[yellow]Scan interrupted. Showing partial results...")
         
         # Get largest files and directories
-        files = [FileInfo(p, s) for p, s in self._scanned_paths.items() if p.is_file()]
+        files = [FileInfo(p, s, i) for p, (s, i) in self._scanned_paths.items() if p.is_file()]
         files.sort(key=lambda x: x.size, reverse=True)
         
         dirs = self._calculate_dir_sizes(root_path)
@@ -72,15 +75,16 @@ class DiskScanner:
     
     def _calculate_dir_sizes(self, root: Path) -> List[FileInfo]:
         """Calculate directory sizes from scanned files"""
-        dir_sizes: Dict[Path, int] = {}
+        dir_sizes: Dict[Path, tuple[int, bool]] = {}
         
-        for path, size in self._scanned_paths.items():
+        for path, (size, is_icloud) in self._scanned_paths.items():
             for parent in path.parents:
                 if parent < root:
                     break
-                dir_sizes[parent] = dir_sizes.get(parent, 0) + size
+                curr_size, curr_cloud = dir_sizes.get(parent, (0, is_icloud))
+                dir_sizes[parent] = (curr_size + size, curr_cloud or is_icloud)
         
-        dirs = [FileInfo(p, s) for p, s in dir_sizes.items()]
+        dirs = [FileInfo(p, s, c) for p, (s, c) in dir_sizes.items()]
         dirs.sort(key=lambda x: x.size, reverse=True)
         return dirs
 

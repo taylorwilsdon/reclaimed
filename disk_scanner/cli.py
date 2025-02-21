@@ -24,22 +24,26 @@ def main(path: str):
         
         # Display results in tables
         file_table = Table(title="Largest Files")
-        file_table.add_column("Size", justify="right")
+        file_table.add_column("Size", justify="right", style="cyan")
+        file_table.add_column("Storage", style="yellow")
         file_table.add_column("Path")
         
         for file in files:
             file_table.add_row(
                 scanner.format_size(file.size),
+                "☁️ iCloud" if file.is_icloud else "💾 Local",
                 str(file.path.relative_to(path_obj))
             )
         
         dir_table = Table(title="Largest Directories")
-        dir_table.add_column("Size", justify="right")
+        dir_table.add_column("Size", justify="right", style="cyan")
+        dir_table.add_column("Storage", style="yellow")
         dir_table.add_column("Path")
         
         for dir in dirs:
             dir_table.add_row(
                 scanner.format_size(dir.size),
+                "☁️ iCloud" if dir.is_icloud else "💾 Local",
                 str(dir.path.relative_to(path_obj))
             )
         
