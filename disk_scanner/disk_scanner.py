@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 import os
 import sys
+import json
+from datetime import datetime
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -146,3 +148,43 @@ class DiskScanner:
                 return f"{size:.1f} {unit}"
             size /= 1024
         return f"{size:.1f} PB"
+
+    def save_results(self, output_path: Path, files: List[FileInfo], dirs: List[FileInfo], scanned_path: Path) -> None:
+        """Save scan results to JSON file"""
+        results = {
+            "scan_info": {
+                "timestamp": datetime.now().isoformat(),
+                "scanned_path": str(scanned_path.absolute()),
+                "total_size_bytes": self._total_size,
+                "total_size_human": self.format_size(self._total_size),
+                "files_scanned": self._file_count
+            },
+            "largest_files": [
+                {
+                    "path": str(f.path.absolute()),
+                    "size_bytes": f.size,
+                    "size_human": self.format_size(f.size),
+                    "storage_type": "icloud" if f.is_icloud else "local"
+                }
+                for f in files
+            ],
+            "largest_directories": [
+                {
+                    "path": str(d.path.absolute()),
+                    "size_bytes": d.size,
+                    "size_human": self.format_size(d.size),
+                    "storage_type": "icloud" if d.is_icloud else "local"
+                }
+                for d in dirs
+            ],
+            "access_issues": [
+                {
+                    "path": str(path),
+                    "error": error
+                }
+                for path, error in self._access_issues.items()
+            ]
+        }
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)

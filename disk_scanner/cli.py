@@ -10,7 +10,8 @@ from .disk_scanner import DiskScanner
 @click.argument('path', type=click.Path(exists=True), default='.')
 @click.option('--files', '-f', default=10, help='Number of largest files to show')
 @click.option('--dirs', '-d', default=10, help='Number of largest directories to show')
-def main(path: str, files: int, dirs: int):
+@click.option('--output', '-o', type=click.Path(), help='Save results to JSON file')
+def main(path: str, files: int, dirs: int, output: Optional[str]):
     """Scan directory and show largest files and folders.
     
     PATH is the directory to scan. Defaults to current directory if not specified."""
@@ -55,6 +56,16 @@ def main(path: str, files: int, dirs: int):
         console.print(file_table)
         console.print()
         console.print(dir_table)
+
+        # Save results to file if requested
+        if output:
+            scanner.save_results(
+                Path(output),
+                largest_files,
+                largest_dirs,
+                path_obj
+            )
+            console.print(f"\n[green]Results saved to:[/green] {output}")
         
     except KeyboardInterrupt:
         console.print("\n[yellow]Scan cancelled.")
