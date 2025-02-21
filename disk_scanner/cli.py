@@ -19,7 +19,7 @@ def main(path: str):
             console.print("[red]Error: Specified path must be a directory")
             sys.exit(1)
             
-        console.print(f"[green]Scanning {path_obj}...")
+        console.print(f"[green]Scanning[/green] {path_obj}")
         files, dirs = scanner.scan_directory(path_obj)
         
         # Display results in tables

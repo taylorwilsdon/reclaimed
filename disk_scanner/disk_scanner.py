@@ -21,8 +21,11 @@ class DiskScanner:
     
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
-        self._scanned_paths: Dict[Path, int] = {}
+        self._scanned_paths: Dict[Path, tuple[int, bool]] = {}
         self._icloud_base = Path.home() / "Library/Mobile Documents"
+        self._access_issues: Dict[Path, str] = {}
+        self._total_size = 0
+        self._file_count = 0
         
     def scan_directory(self, root_path: Path) -> Tuple[List[FileInfo], List[FileInfo]]:
         """
@@ -37,10 +40,12 @@ class DiskScanner:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
+            TextColumn("[cyan]{task.fields[files]} files"),
+            TextColumn("[magenta]{task.fields[size]}"),
             console=self.console,
             transient=True,
         ) as progress:
-            task = progress.add_task("Scanning...", total=None)
+            task = progress.add_task("Scanning...", total=None, files="0", size="0 B")
             
             try:
                 for path in self._walk_directory(root_path, progress):
@@ -49,8 +54,11 @@ class DiskScanner:
                             size = path.stat().st_size
                             is_icloud = self._icloud_base in path.parents
                             self._scanned_paths[path] = (size, is_icloud)
+                            self._total_size += size
+                            self._file_count += 1
+                            progress.update(task, files=f"{self._file_count:,}", size=self.format_size(self._total_size))
                         except (PermissionError, OSError) as e:
-                            self.console.print(f"[yellow]Warning: Cannot access {path}: {e}")
+                            self._access_issues[path] = str(e)
                     progress.update(task)
             except KeyboardInterrupt:
                 self.console.print("\n[yellow]Scan interrupted. Showing partial results...")
@@ -61,6 +69,25 @@ class DiskScanner:
         
         dirs = self._calculate_dir_sizes(root_path)
         
+        # Show summary of access issues if any occurred
+        if self._access_issues:
+            self.console.print("\n[yellow]Access Issues Summary:[/yellow]")
+            issue_table = Table(show_header=False, box=None)
+            for path, error in sorted(self._access_issues.items())[:5]:  # Show top 5 issues
+                issue_table.add_row(
+                    f"[dim]•[/dim]", 
+                    f"[yellow]{path.name}[/yellow]",
+                    f"[dim]{error}[/dim]"
+                )
+            if len(self._access_issues) > 5:
+                issue_table.add_row(
+                    "[dim]•[/dim]",
+                    f"[dim]...and {len(self._access_issues) - 5} more[/dim]",
+                    ""
+                )
+            self.console.print(issue_table)
+            self.console.print()
+
         return files[:10], dirs[:10]
     
     def _walk_directory(self, path: Path, progress: Progress):
