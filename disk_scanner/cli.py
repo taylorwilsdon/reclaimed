@@ -54,7 +54,7 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
             file_table.add_row(
                 scanner.format_size(file.size),
                 f"[{'bright_blue' if file.is_icloud else 'green'}]{'☁️ iCloud' if file.is_icloud else '💾 Local'}[/]",
-                str(file.path.relative_to(path_obj))
+                str(file.path)
             )
         
         dir_table = Table(
@@ -73,7 +73,7 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
             dir_table.add_row(
                 scanner.format_size(dir.size),
                 f"[{'bright_blue' if dir.is_icloud else 'green'}]{'☁️ iCloud' if dir.is_icloud else '💾 Local'}[/]",
-                str(dir.path.relative_to(path_obj))
+                str(dir.path)
             )
         
         console.print()
