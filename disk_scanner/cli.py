@@ -1,4 +1,4 @@
-"""Command line interface for disk scanner"""
+"""Command line interface for reclaim"""
 import sys
 from pathlib import Path
 from typing import Optional
@@ -16,9 +16,10 @@ from .disk_scanner import DiskScanner
 @click.option('--dirs', '-d', default=10, help='Number of largest directories to show')
 @click.option('--output', '-o', type=click.Path(), help='Save results to JSON file')
 def main(path: str, files: int, dirs: int, output: Optional[str]):
-    """Scan directory and show largest files and folders.
+    """Analyze disk usage and optimize storage with Reclaim.
     
-    PATH is the directory to scan. Defaults to current directory if not specified."""
+    Scans directories and shows largest files and folders.
+    PATH is the directory to analyze. Defaults to current directory if not specified."""
     console = Console()
     scanner = DiskScanner(console)
     

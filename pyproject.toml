@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "disk-scanner"
+name = "reclaim"
 dynamic = ["version"]
 description = "A powerful disk usage analyzer with iCloud support"
 readme = "README.md"
