@@ -4,7 +4,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 from rich.table import Table
-imnport DiskScanner
+from .disk_scanner import DiskScanner
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True), default='.')
