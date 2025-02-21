@@ -34,7 +34,7 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
         file_table.add_column("Storage", style="yellow")
         file_table.add_column("Path")
         
-        for file in files:
+        for file in largest_files:
             file_table.add_row(
                 scanner.format_size(file.size),
                 "☁️ iCloud" if file.is_icloud else "💾 Local",
@@ -46,7 +46,7 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
         dir_table.add_column("Storage", style="yellow")
         dir_table.add_column("Path")
         
-        for dir in dirs:
+        for dir in largest_dirs:
             dir_table.add_row(
                 scanner.format_size(dir.size),
                 "☁️ iCloud" if dir.is_icloud else "💾 Local",
