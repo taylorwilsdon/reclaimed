@@ -69,22 +69,34 @@ class DiskScanner:
         
         dirs = self._calculate_dir_sizes(root_path)
         
-        # Show summary of access issues if any occurred
+        # Show organized summary of access issues if any occurred
         if self._access_issues:
-            self.console.print("\n[yellow]Access Issues Summary:[/yellow]")
-            issue_table = Table(show_header=False, box=None)
-            for path, error in sorted(self._access_issues.items())[:5]:  # Show top 5 issues
+            self.console.print("\n[yellow]Access Issues Summary[/yellow]")
+            
+            # Group issues by error type
+            issues_by_type: Dict[str, List[Path]] = {}
+            for path, error in self._access_issues.items():
+                issues_by_type.setdefault(error, []).append(path)
+            
+            issue_table = Table(show_header=False, box=None, padding=(0, 1))
+            
+            for error_type, paths in issues_by_type.items():
                 issue_table.add_row(
-                    f"[dim]•[/dim]", 
-                    f"[yellow]{path.name}[/yellow]",
-                    f"[dim]{error}[/dim]"
+                    "[yellow]•[/yellow]",
+                    f"[yellow]{error_type}[/yellow] ({len(paths)} items)"
                 )
-            if len(self._access_issues) > 5:
-                issue_table.add_row(
-                    "[dim]•[/dim]",
-                    f"[dim]...and {len(self._access_issues) - 5} more[/dim]",
-                    ""
-                )
+                # Show up to 3 examples for each error type
+                for path in sorted(paths)[:3]:
+                    issue_table.add_row(
+                        "  [dim]>[/dim]",
+                        f"[dim]{path.name}[/dim]"
+                    )
+                if len(paths) > 3:
+                    issue_table.add_row(
+                        "  [dim]>[/dim]",
+                        f"[dim]...and {len(paths) - 3} more similar items[/dim]"
+                    )
+            
             self.console.print(issue_table)
             self.console.print()
 
@@ -95,10 +107,15 @@ class DiskScanner:
         try:
             for item in path.iterdir():
                 if item.is_dir() and not item.is_symlink():
+                    # Skip certain system directories that commonly cause permission issues
+                    if any(skip in str(item) for skip in ['.Trash', 'System Volume Information']):
+                        continue
                     yield from self._walk_directory(item, progress)
                 yield item
         except PermissionError as e:
-            self.console.print(f"[yellow]Warning: Cannot access {path}: {e}")
+            self._access_issues[path] = "Permission denied"
+        except OSError as e:
+            self._access_issues[path] = str(e)
     
     def _calculate_dir_sizes(self, root: Path) -> List[FileInfo]:
         """Calculate directory sizes from scanned files"""
