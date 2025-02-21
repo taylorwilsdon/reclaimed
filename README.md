@@ -29,8 +29,8 @@ pip install reclaim
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/disk-scanner.git
-cd disk-scanner
+git clone https://github.com/taylorwilsdon/reclaim.git
+cd reclaim
 pip install -e .
 ```
 
@@ -38,16 +38,16 @@ pip install -e .
 
 Basic usage:
 ```bash
-disk-scanner ~/Documents
+reclaim ~/Documents
 ```
 
 Advanced options:
 ```bash
 # Show more results
-disk-scanner ~/Documents --files 20 --dirs 15
+reclaim ~/Documents --files 20 --dirs 15
 
 # Save results to JSON
-disk-scanner ~/Documents --output results.json
+reclaim ~/Documents --output results.json
 ```
 
 ### Options
