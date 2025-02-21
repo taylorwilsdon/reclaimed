@@ -1,6 +1,7 @@
 """Command line interface for disk scanner"""
 import sys
 from pathlib import Path
+from typing import Optional
 import click
 from rich.console import Console
 from rich.table import Table
