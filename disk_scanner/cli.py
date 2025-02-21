@@ -43,16 +43,17 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
             expand=True,
             border_style="cyan",
             header_style="bold cyan",
-            show_lines=True
+            show_lines=True,
+            padding=(0, 1)
         )
-        file_table.add_column("Size", justify="right", style="cyan", width=12)
-        file_table.add_column("Storage", style="yellow", width=10)
-        file_table.add_column("Path", style="white", overflow="fold")
+        file_table.add_column("Size", justify="right", style="cyan", width=8, no_wrap=True)
+        file_table.add_column("Type", style="yellow", width=6, no_wrap=True)
+        file_table.add_column("Path", style="white", ratio=1, overflow="ellipsis")
         
         for file in largest_files:
             file_table.add_row(
                 scanner.format_size(file.size),
-                "☁️ iCloud" if file.is_icloud else "💾 Local",
+                "☁️" if file.is_icloud else "💾",
                 str(file.path.relative_to(path_obj))
             )
         
@@ -61,16 +62,17 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
             expand=True,
             border_style="blue",
             header_style="bold blue",
-            show_lines=True
+            show_lines=True,
+            padding=(0, 1)
         )
-        dir_table.add_column("Size", justify="right", style="cyan", width=12)
-        dir_table.add_column("Storage", style="yellow", width=10)
-        dir_table.add_column("Path", style="white", overflow="fold")
+        dir_table.add_column("Size", justify="right", style="cyan", width=8, no_wrap=True)
+        dir_table.add_column("Type", style="yellow", width=6, no_wrap=True)
+        dir_table.add_column("Path", style="white", ratio=1, overflow="ellipsis")
         
         for dir in largest_dirs:
             dir_table.add_row(
                 scanner.format_size(dir.size),
-                "☁️ iCloud" if dir.is_icloud else "💾 Local",
+                "☁️" if dir.is_icloud else "💾",
                 str(dir.path.relative_to(path_obj))
             )
         
