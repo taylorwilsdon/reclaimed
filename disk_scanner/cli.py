@@ -8,8 +8,12 @@ from .disk_scanner import DiskScanner
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True), default='.')
-def main(path: str):
-    """Scan directory and show largest files and folders"""
+@click.option('--files', '-f', default=10, help='Number of largest files to show')
+@click.option('--dirs', '-d', default=10, help='Number of largest directories to show')
+def main(path: str, files: int, dirs: int):
+    """Scan directory and show largest files and folders.
+    
+    PATH is the directory to scan. Defaults to current directory if not specified."""
     console = Console()
     scanner = DiskScanner(console)
     
@@ -20,7 +24,7 @@ def main(path: str):
             sys.exit(1)
             
         console.print(f"[green]Scanning[/green] {path_obj}")
-        files, dirs = scanner.scan_directory(path_obj)
+        largest_files, largest_dirs = scanner.scan_directory(path_obj, max_files=files, max_dirs=dirs)
         
         # Display results in tables
         file_table = Table(title="Largest Files")

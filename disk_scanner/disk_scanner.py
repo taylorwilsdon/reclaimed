@@ -27,12 +27,19 @@ class DiskScanner:
         self._total_size = 0
         self._file_count = 0
         
-    def scan_directory(self, root_path: Path) -> Tuple[List[FileInfo], List[FileInfo]]:
+    def scan_directory(
+        self, 
+        root_path: Path, 
+        max_files: int = 10, 
+        max_dirs: int = 10
+    ) -> Tuple[List[FileInfo], List[FileInfo]]:
         """
         Scan directory and return largest files and folders
         
         Args:
             root_path: Directory path to scan
+            max_files: Maximum number of files to return
+            max_dirs: Maximum number of directories to return
             
         Returns:
             Tuple of (largest_files, largest_dirs)
@@ -100,7 +107,7 @@ class DiskScanner:
             self.console.print(issue_table)
             self.console.print()
 
-        return files[:10], dirs[:10]
+        return files[:max_files], dirs[:max_dirs]
     
     def _walk_directory(self, path: Path, progress: Progress):
         """Recursively walk directory handling permissions"""
