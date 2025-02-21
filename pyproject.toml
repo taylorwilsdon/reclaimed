@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "disk-scanner"
+dynamic = ["version"]
+description = "A powerful disk usage analyzer with iCloud support"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["disk", "storage", "analyzer", "icloud", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "click>=8.0.0",
+    "rich>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/disk-scanner"
+Repository = "https://github.com/yourusername/disk-scanner.git"
+Issues = "https://github.com/yourusername/disk-scanner/issues"
+
+[project.scripts]
+disk-scanner = "disk_scanner.cli:main"
+
+[tool.setuptools]
+packages = ["disk_scanner"]
+
+[tool.setuptools_scm]
+write_to = "disk_scanner/_version.py"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.black]
+line-length = 100
+target-version = ['py38']

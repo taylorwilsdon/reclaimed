@@ -1,2 +1,7 @@
 click>=8.0.0
 rich>=10.0.0
+setuptools>=45.0.0
+wheel>=0.37.0
+setuptools-scm>=6.2.0
+black>=22.0.0
+mypy>=0.950
