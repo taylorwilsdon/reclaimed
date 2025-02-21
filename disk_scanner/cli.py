@@ -5,6 +5,9 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.text import Text
 from .disk_scanner import DiskScanner
 
 @click.command()
@@ -25,14 +28,26 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
             console.print("[red]Error: Specified path must be a directory")
             sys.exit(1)
             
-        console.print(f"[green]Scanning[/green] {path_obj}")
+        # Create header panel
+        header = Panel(
+            Text(f"Scanning {path_obj}", style="bold green"),
+            border_style="green",
+            expand=True
+        )
+        console.print(header)
         largest_files, largest_dirs = scanner.scan_directory(path_obj, max_files=files, max_dirs=dirs)
         
         # Display results in tables
-        file_table = Table(title="Largest Files")
-        file_table.add_column("Size", justify="right", style="cyan")
-        file_table.add_column("Storage", style="yellow")
-        file_table.add_column("Path")
+        file_table = Table(
+            title="[bold]Largest Files[/]",
+            expand=True,
+            border_style="cyan",
+            header_style="bold cyan",
+            show_lines=True
+        )
+        file_table.add_column("Size", justify="right", style="cyan", width=12)
+        file_table.add_column("Storage", style="yellow", width=10)
+        file_table.add_column("Path", style="white", overflow="fold")
         
         for file in largest_files:
             file_table.add_row(
@@ -41,10 +56,16 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
                 str(file.path.relative_to(path_obj))
             )
         
-        dir_table = Table(title="Largest Directories")
-        dir_table.add_column("Size", justify="right", style="cyan")
-        dir_table.add_column("Storage", style="yellow")
-        dir_table.add_column("Path")
+        dir_table = Table(
+            title="[bold]Largest Directories[/]",
+            expand=True,
+            border_style="blue",
+            header_style="bold blue",
+            show_lines=True
+        )
+        dir_table.add_column("Size", justify="right", style="cyan", width=12)
+        dir_table.add_column("Storage", style="yellow", width=10)
+        dir_table.add_column("Path", style="white", overflow="fold")
         
         for dir in largest_dirs:
             dir_table.add_row(
@@ -66,7 +87,12 @@ def main(path: str, files: int, dirs: int, output: Optional[str]):
                 largest_dirs,
                 path_obj
             )
-            console.print(f"\n[green]Results saved to:[/green] {output}")
+            save_panel = Panel(
+                Text(f"Results saved to: {output}", style="green"),
+                border_style="green",
+                expand=True
+            )
+            console.print("\n", save_panel)
         
     except KeyboardInterrupt:
         console.print("\n[yellow]Scan cancelled.")

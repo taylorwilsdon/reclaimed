@@ -80,14 +80,20 @@ class DiskScanner:
         
         # Show organized summary of access issues if any occurred
         if self._access_issues:
-            self.console.print("\n[yellow]Access Issues Summary[/yellow]")
-            
             # Group issues by error type
             issues_by_type: Dict[str, List[Path]] = {}
             for path, error in self._access_issues.items():
                 issues_by_type.setdefault(error, []).append(path)
             
-            issue_table = Table(show_header=False, box=None, padding=(0, 1))
+            issue_table = Table(
+                show_header=False,
+                box=None,
+                padding=(0, 1),
+                expand=True,
+                title="[bold yellow]Access Issues Summary[/]",
+                title_justify="left",
+                border_style="yellow"
+            )
             
             for error_type, paths in issues_by_type.items():
                 issue_table.add_row(
