@@ -1,4 +1,4 @@
-# Reclaim 🌟
+# reclaim 🌟
 
 A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface.
 
