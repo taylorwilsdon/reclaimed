@@ -6,12 +6,12 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 ## Features
 
-- 🚀 Fast recursive directory scanning
-- ☁️ Smart detection of iCloud vs local storage
-- 📊 Beautiful color-coded output using Rich
-- 💾 Export results to JSON for further analysis
-- ⚡️ Real-time progress indication
-- 🛡️ Graceful handling of permission issues
+- 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficently 
+- ☁️ Smart detection of iCloud vs local storage which is nice on the macbook
+- 📊 She pretty (its rich library just use aider tell it to take your finished product data export and make it nice)
+- 💾 Export results to JSON for further analysis or batch operations
+- ⚡️ Real-time progress indication actually great
+- 🛡️ Graceful handling of permission issues, doesn't freeze like the old diskinventoryx
 
 ## Installation
 
@@ -19,6 +19,7 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 - Python 3.8 or higher
 - pip (Python package installer)
+- Technically not a venv but if you aren't using a venv you're generally doing python wrong
 
 ### Using pip
 
