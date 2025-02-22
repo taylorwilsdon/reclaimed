@@ -4,6 +4,8 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 ![Disk Scanner Demo](demo.gif)
 
+<img width="898" alt="image" src="https://github.com/user-attachments/assets/b8c87581-978b-46e4-bf8b-d9e9b2cd5f9b" />
+
 ## Features
 
 - 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficently 
