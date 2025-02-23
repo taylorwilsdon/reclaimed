@@ -1,6 +1,6 @@
 # reclaim 🌟
 
-A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface. I let aider write the boilerplate and its all accurate but I'm still not sure how we feel about the emojis. Claude is a colorful gentleman when writing markdown.
+A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface. I let aider write the README.md boilerplate and it's all accurate but I'm still not sure how we feel about the emojis... it seems Claude is a colorful gentleman when writing markdown.
 
 ![Disk Scanner Demo](demo.gif)
 
