@@ -10,7 +10,7 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 - 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficently 
 - ☁️ Smart detection of iCloud vs local storage which is nice on the macbook
-- 📊 She pretty (its rich library just use aider tell it to take your finished product data export and make it nice)
+- 📊 She pretty (it utilizes the [Textualize/rich](https://github.com/Textualize/rich) library for fancy CLI stylings)
 - 💾 Export results to JSON for further analysis or batch operations
 - ⚡️ Real-time progress indication actually great
 - 🛡️ Graceful handling of permission issues, doesn't freeze like the old diskinventoryx
