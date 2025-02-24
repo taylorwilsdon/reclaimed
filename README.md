@@ -31,7 +31,7 @@ pip install reclaim
 ```bash
 git clone https://github.com/taylorwilsdon/reclaim.git
 cd reclaim
-pip install hatch
+pip install -r requirements.txt
 hatch shell
 ```
 
@@ -73,7 +73,7 @@ This project uses [Hatch](https://hatch.pypa.io/) for development workflow manag
 ### Setup Development Environment
 
 ```bash
-pip install hatch
+pip install -r requirements.txt
 hatch shell
 ```
 

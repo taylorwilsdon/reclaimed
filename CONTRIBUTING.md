@@ -10,9 +10,9 @@ Thank you for your interest in contributing to Reclaim! This document provides g
    cd reclaim
    ```
 
-2. Install Hatch:
+2. Install dependencies:
    ```bash
-   pip install hatch
+   pip install -r requirements.txt
    ```
 
 3. Create a development environment:
