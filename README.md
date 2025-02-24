@@ -34,7 +34,8 @@ pip install reclaim
 ```bash
 git clone https://github.com/taylorwilsdon/reclaim.git
 cd reclaim
-pip install -e .
+pip install -r requirements.txt
+hatch shell
 ```
 
 ## Usage
@@ -68,9 +69,36 @@ The tool provides:
 - Clear indication of iCloud vs local storage
 - Summary of any access issues encountered
 
+## Development
+
+This project uses [Hatch](https://hatch.pypa.io/) for development workflow management.
+
+### Setup Development Environment
+
+```bash
+pip install -r requirements.txt
+hatch shell
+```
+
+### Common Commands
+
+```bash
+# Run tests
+hatch run test
+
+# Run tests with coverage
+hatch run test-cov
+
+# Run linting (black, ruff, mypy)
+hatch run lint
+
+# Build distribution packages
+hatch build
+```
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ## License
 

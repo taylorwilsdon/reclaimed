@@ -6,37 +6,42 @@ This script scans a given directory, displays scan progress with Rich, and
 computes both largest files and directories. It also saves results to a JSON file.
 """
 
-from pathlib import Path
-from typing import Dict, List, NamedTuple, Iterator, Optional, Tuple
-import os
-import sys
-import json
 import argparse
+import json
+import logging
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
+
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-import logging
 
 # Set up basic logging (could be extended)
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Constant for directories to skip during scanning
 SKIP_DIRS = [".Trash", "System Volume Information"]
 
+
 class FileInfo(NamedTuple):
     """Store file information in an immutable structure."""
+
     path: Path
     size: int
     is_icloud: bool = False
 
+
 class DiskScanner:
     """Core scanning logic for analyzing disk usage."""
 
-    def __init__(self, console: Optional[Console] = None) -> None:
+    def __init__(
+        self, console: Optional[Console] = None, icloud_base: Optional[Path] = None
+    ) -> None:
         self.console = console or Console()
         self._file_data: Dict[Path, Tuple[int, bool]] = {}
-        self._icloud_base: Path = Path.home() / "Library/Mobile Documents"
+        self._icloud_base = icloud_base or Path.home() / "Library/Mobile Documents"
         self._access_issues: Dict[Path, str] = {}
         self._total_size: int = 0
         self._file_count: int = 0
@@ -73,7 +78,9 @@ class DiskScanner:
                     if path.is_file():
                         try:
                             size = path.stat().st_size
-                            is_icloud = self._icloud_base in path.parents
+                            is_icloud = (
+                                self._icloud_base in path.parents or "Mobile Documents" in str(path)
+                            )
                             self._file_data[path] = (size, is_icloud)
                             self._total_size += size
                             self._file_count += 1
@@ -91,7 +98,9 @@ class DiskScanner:
                     if i % update_interval == 0:
                         progress.update(task)
             except KeyboardInterrupt:
-                self.console.print("\n[yellow]Scan interrupted. Showing partial results...[/yellow]")
+                self.console.print(
+                    "\n[yellow]Scan interrupted. Showing partial results...[/yellow]"
+                )
 
         # Get largest files – the keys in _file_data are all the scanned items that are files.
         files = [FileInfo(p, s, i) for p, (s, i) in self._file_data.items() if p.is_file()]
@@ -159,11 +168,12 @@ class DiskScanner:
         Returns:
             A human-readable size string.
         """
+        size_float = float(size)  # Convert to float for division
         for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{size:.1f} PB"
+            if size_float < 1024:
+                return f"{size_float:.1f} {unit}"
+            size_float /= 1024
+        return f"{size_float:.1f} PB"
 
     def save_results(
         self, output_path: Path, files: List[FileInfo], dirs: List[FileInfo], scanned_path: Path
@@ -204,8 +214,7 @@ class DiskScanner:
                 for d in dirs
             ],
             "access_issues": [
-                {"path": str(path), "error": error}
-                for path, error in self._access_issues.items()
+                {"path": str(path), "error": error} for path, error in self._access_issues.items()
             ],
         }
 
@@ -247,6 +256,7 @@ class DiskScanner:
         self.console.print(issue_table)
         self.console.print()
 
+
 def main() -> None:
     """Entrypoint for the command-line interface."""
     parser = argparse.ArgumentParser(
@@ -278,13 +288,18 @@ def main() -> None:
     console = scanner.console
     console.print("\n[bold green]Top Files:[/bold green]")
     for f in largest_files:
-        console.print(f"{f.path} | {scanner.format_size(f.size)} | {'iCloud' if f.is_icloud else 'local'}")
+        console.print(
+            f"{f.path} | {scanner.format_size(f.size)} | {'iCloud' if f.is_icloud else 'local'}"
+        )
     console.print("\n[bold green]Top Directories:[/bold green]")
     for d in largest_dirs:
-        console.print(f"{d.path} | {scanner.format_size(d.size)} | {'iCloud' if d.is_icloud else 'local'}")
+        console.print(
+            f"{d.path} | {scanner.format_size(d.size)} | {'iCloud' if d.is_icloud else 'local'}"
+        )
 
     # Save the results
     scanner.save_results(args.output, largest_files, largest_dirs, args.path)
+
 
 if __name__ == "__main__":
     main()
