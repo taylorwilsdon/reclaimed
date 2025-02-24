@@ -3,13 +3,21 @@
 import sys
 from pathlib import Path
 from typing import Optional
+
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich.layout import Layout
+from rich.table import Table
 from rich.text import Text
+
 from .disk_scanner import DiskScanner
+
+
+def _format_storage_status(is_icloud: bool) -> str:
+    """Format storage status with appropriate color and icon."""
+    color = "bright_blue" if is_icloud else "green"
+    status = "☁️ iCloud" if is_icloud else "💾 Local"
+    return f"[{color}]{status}[/]"
 
 
 @click.command()
@@ -17,7 +25,9 @@ from .disk_scanner import DiskScanner
 @click.option("--files", "-f", default=10, help="Number of largest files to show")
 @click.option("--dirs", "-d", default=10, help="Number of largest directories to show")
 @click.option("--output", "-o", type=click.Path(), help="Save results to JSON file")
-def main(path: str, files: int, dirs: int, output: Optional[str], console: Optional[Console] = None):
+def main(
+    path: str, files: int, dirs: int, output: Optional[str], console: Optional[Console] = None
+) -> None:
     """Analyze disk usage and optimize storage with Reclaim.
 
     Scans directories and shows largest files and folders.
@@ -32,9 +42,7 @@ def main(path: str, files: int, dirs: int, output: Optional[str], console: Optio
             sys.exit(1)
 
         # Create header panel
-        header = Panel(
-            Text(f"Scanning {path_obj}", style="bold green"), border_style="green"
-        )
+        header = Panel(Text(f"Scanning {path_obj}", style="bold green"), border_style="green")
         console.print(header)
         largest_files, largest_dirs = scanner.scan_directory(
             path_obj, max_files=files, max_dirs=dirs
@@ -55,8 +63,8 @@ def main(path: str, files: int, dirs: int, output: Optional[str], console: Optio
         for file in largest_files:
             file_table.add_row(
                 scanner.format_size(file.size),
-                f"[{'bright_blue' if file.is_icloud else 'green'}]{'☁️ iCloud' if file.is_icloud else '💾 Local'}[/]",
-                str(file.path.name)  # Show just the filename for cleaner output
+                _format_storage_status(file.is_icloud),
+                str(file.path.name),  # Show just the filename for cleaner output
             )
 
         dir_table = Table(
@@ -73,8 +81,8 @@ def main(path: str, files: int, dirs: int, output: Optional[str], console: Optio
         for dir in largest_dirs:
             dir_table.add_row(
                 scanner.format_size(dir.size),
-                f"[{'bright_blue' if dir.is_icloud else 'green'}]{'☁️ iCloud' if dir.is_icloud else '💾 Local'}[/]",
-                str(dir.path.name)  # Show just the directory name for cleaner output
+                _format_storage_status(dir.is_icloud),
+                str(dir.path.name),  # Show just the directory name for cleaner output
             )
 
         console.print()
