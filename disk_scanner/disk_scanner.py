@@ -33,10 +33,10 @@ class FileInfo(NamedTuple):
 class DiskScanner:
     """Core scanning logic for analyzing disk usage."""
 
-    def __init__(self, console: Optional[Console] = None) -> None:
+    def __init__(self, console: Optional[Console] = None, icloud_base: Optional[Path] = None) -> None:
         self.console = console or Console()
         self._file_data: Dict[Path, Tuple[int, bool]] = {}
-        self._icloud_base: Path = Path.home() / "Library/Mobile Documents"
+        self._icloud_base = icloud_base or Path.home() / "Library/Mobile Documents"
         self._access_issues: Dict[Path, str] = {}
         self._total_size: int = 0
         self._file_count: int = 0
@@ -73,7 +73,7 @@ class DiskScanner:
                     if path.is_file():
                         try:
                             size = path.stat().st_size
-                            is_icloud = self._icloud_base in path.parents
+                            is_icloud = self._icloud_base in path.parents or "Mobile Documents" in str(path)
                             self._file_data[path] = (size, is_icloud)
                             self._total_size += size
                             self._file_count += 1

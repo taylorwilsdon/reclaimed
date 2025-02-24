@@ -32,9 +32,11 @@ def temp_directory():
         yield root
 
 @pytest.fixture
-def scanner():
+def scanner(temp_directory):
     """Create a DiskScanner instance with a test console."""
-    return DiskScanner(Console(force_terminal=True))
+    # Initialize scanner with the test directory's iCloud base
+    icloud_base = temp_directory / "Library" / "Mobile Documents"
+    return DiskScanner(Console(force_terminal=True), icloud_base=icloud_base)
 
 def test_scan_directory_basic(scanner, temp_directory):
     """Test basic directory scanning functionality."""
