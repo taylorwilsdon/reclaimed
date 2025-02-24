@@ -22,10 +22,12 @@ def temp_directory():
         subdir.mkdir()
         (subdir / "file3.txt").write_text("x" * 3000)  # 3KB file
         
-        # Create a mock iCloud directory structure
-        icloud_base = root / "Library/Mobile Documents"
+        # Create a mock iCloud directory structure (full path)
+        icloud_base = root / "Library" / "Mobile Documents"
         icloud_base.mkdir(parents=True)
-        (icloud_base / "cloud_file.txt").write_text("x" * 4000)  # 4KB file
+        icloud_file = icloud_base / "com~apple~CloudDocs" / "cloud_file.txt"
+        icloud_file.parent.mkdir(parents=True)
+        icloud_file.write_text("x" * 4000)  # 4KB file
         
         yield root
 
@@ -58,6 +60,8 @@ def test_icloud_detection(scanner, temp_directory):
     local_files = [f for f in files if not f.is_icloud]
     
     # Verify we can detect both iCloud and local files
+    assert len(icloud_files) > 0, "No iCloud files found"
+    assert len(local_files) > 0, "No local files found"
     assert any("Mobile Documents" in str(f.path) for f in icloud_files)
     assert any("Mobile Documents" not in str(f.path) for f in local_files)
 

@@ -100,7 +100,7 @@ def test_cli_invalid_path(cli_runner, test_console):
         obj={"console": test_console}
     )
     
-    assert result.exit_code == 1
+    assert result.exit_code == 2  # Click's standard exit code for invalid input
     assert "error" in result.output.lower()
 
 def test_cli_keyboard_interrupt(cli_runner, test_directory, test_console, monkeypatch):
