@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "reclaim"
@@ -41,11 +41,36 @@ Issues = "https://github.com/taylorwilsdon/reclaim/issues"
 [project.scripts]
 reclaim = "disk_scanner.cli:main"
 
-[tool.setuptools]
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
 packages = ["disk_scanner"]
 
-[tool.setuptools_scm]
-write_to = "disk_scanner/_version.py"
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "mypy",
+    "ruff",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "pytest --cov=disk_scanner --cov-report=term-missing tests"
+lint = [
+    "black .",
+    "ruff check .",
+    "mypy disk_scanner tests",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
 
 [tool.mypy]
 python_version = "3.8"
@@ -57,3 +82,8 @@ check_untyped_defs = true
 [tool.black]
 line-length = 100
 target-version = ['py38']
+
+[tool.ruff]
+select = ["E", "F", "B", "I"]
+line-length = 100
+target-version = "py38"
