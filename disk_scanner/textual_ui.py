@@ -453,8 +453,10 @@ class ReclaimApp(App):
         if table.cursor_coordinate is not None:
             row = table.cursor_coordinate.row
             if row < len(table.rows):
-                # Get the path from the key
-                path_str = table.get_row_at(row).key
+                # Get the path from the row key
+                row_data = table.get_row_at(row)
+                # The key is stored in the row_key attribute of the table for the specific row
+                path_str = table.get_row(row).key
                 path = Path(path_str)
                 is_dir = path.is_dir()
                 
