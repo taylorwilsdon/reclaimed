@@ -6,13 +6,18 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+# Create mock classes before importing
+mock_app = MagicMock()
+mock_modal_screen = MagicMock()
+mock_screen = MagicMock()
+
 # Mock the textual imports to avoid requiring the package for tests
 sys.modules['textual'] = MagicMock()
-sys.modules['textual.app'] = MagicMock()
+sys.modules['textual.app'] = MagicMock(App=mock_app)
 sys.modules['textual.widgets'] = MagicMock()
 sys.modules['textual.binding'] = MagicMock()
 sys.modules['textual.containers'] = MagicMock()
-sys.modules['textual.screen'] = MagicMock()
+sys.modules['textual.screen'] = MagicMock(Screen=mock_screen, ModalScreen=mock_modal_screen)
 sys.modules['textual.on'] = MagicMock()
 sys.modules['rich.text'] = MagicMock()
 
@@ -60,20 +65,17 @@ class TestReclaimApp:
 
     def test_app_initialization(self):
         """Test that the app initializes correctly."""
-        with patch.object(ReclaimApp, "__init__", return_value=None) as mock_init:
-            with patch("disk_scanner.textual_ui.DiskScanner") as mock_scanner_class:
-                mock_scanner = MagicMock()
-                mock_scanner_class.return_value = mock_scanner
-                
-                # Create app instance and manually set attributes that would be set in __init__
-                app = ReclaimApp.__new__(ReclaimApp)
-                app.path = Path("/test")
-                app.max_files = 100
-                app.max_dirs = 100
-                app.current_view = "files"
-                app.sort_method = "sort-size"
-                app.scanner = mock_scanner
+        # Create a simple mock for DiskScanner
+        with patch("disk_scanner.textual_ui.DiskScanner") as mock_scanner_class:
+            mock_scanner = MagicMock()
+            mock_scanner_class.return_value = mock_scanner
             
+            # Create a mock for Path.resolve
+            with patch("pathlib.Path.resolve", return_value=Path("/test")):
+                # Create the app instance
+                app = ReclaimApp(Path("/test"))
+                
+                # Check that attributes were set correctly
                 assert str(app.path) == "/test"
                 assert app.max_files == 100
                 assert app.max_dirs == 100
@@ -83,32 +85,35 @@ class TestReclaimApp:
 
     def test_apply_sort(self):
         """Test the sort functionality."""
-        # Create a mock app with patched initialization
-        app = ReclaimApp.__new__(ReclaimApp)
-        app.largest_files = [
-            FileInfo(Path("/test/c.txt"), 1000, False),
-            FileInfo(Path("/test/a.txt"), 3000, False),
-            FileInfo(Path("/test/b.txt"), 2000, False),
-        ]
-    
-        # Test sort by name
-        app.apply_sort("sort-name")
-        assert app.largest_files[0].path.name == "a.txt"
-        assert app.largest_files[1].path.name == "b.txt"
-        assert app.largest_files[2].path.name == "c.txt"
-    
-        # Test sort by path
-        app.apply_sort("sort-path")
-        assert "a.txt" in str(app.largest_files[0].path)
-        assert "b.txt" in str(app.largest_files[1].path)
-        assert "c.txt" in str(app.largest_files[2].path)
-    
-        # Test sort by size (default)
-        app.apply_sort("sort-size")
-        # The original data is already sorted by size in reverse order
-        assert app.largest_files[0].path.name == "a.txt"  # 3000
-        assert app.largest_files[1].path.name == "b.txt"  # 2000
-        assert app.largest_files[2].path.name == "c.txt"  # 1000
+        # Create the app instance
+        with patch("disk_scanner.textual_ui.DiskScanner"):
+            app = ReclaimApp(Path("/test"))
+            
+            # Set up test data
+            app.largest_files = [
+                FileInfo(Path("/test/c.txt"), 1000, False),
+                FileInfo(Path("/test/a.txt"), 3000, False),
+                FileInfo(Path("/test/b.txt"), 2000, False),
+            ]
+        
+            # Test sort by name
+            app.apply_sort("sort-name")
+            assert app.largest_files[0].path.name == "a.txt"
+            assert app.largest_files[1].path.name == "b.txt"
+            assert app.largest_files[2].path.name == "c.txt"
+        
+            # Test sort by path
+            app.apply_sort("sort-path")
+            assert "a.txt" in str(app.largest_files[0].path)
+            assert "b.txt" in str(app.largest_files[1].path)
+            assert "c.txt" in str(app.largest_files[2].path)
+        
+            # Test sort by size (default)
+            app.apply_sort("sort-size")
+            # The original data is already sorted by size in reverse order
+            assert app.largest_files[0].path.name == "a.txt"  # 3000
+            assert app.largest_files[1].path.name == "b.txt"  # 2000
+            assert app.largest_files[2].path.name == "c.txt"  # 1000
 
 
 class TestConfirmationDialog:
@@ -116,22 +121,14 @@ class TestConfirmationDialog:
 
     def test_dialog_initialization(self):
         """Test that the dialog initializes correctly."""
-        # Create dialog instance without calling __init__
-        dialog = ConfirmationDialog.__new__(ConfirmationDialog)
-        dialog.item_path = Path("/test/file.txt")
-        dialog.is_dir = False
-        dialog.item_type = "file"
-        
-        assert str(dialog.item_path) == "/test/file.txt"
-        assert dialog.is_dir is False
-        assert dialog.item_type == "file"
+        # Create dialog instances directly
+        file_dialog = ConfirmationDialog(Path("/test/file.txt"), is_dir=False)
+        assert str(file_dialog.item_path) == "/test/file.txt"
+        assert file_dialog.is_dir is False
+        assert file_dialog.item_type == "file"
         
         # Test directory dialog
-        dir_dialog = ConfirmationDialog.__new__(ConfirmationDialog)
-        dir_dialog.item_path = Path("/test/dir")
-        dir_dialog.is_dir = True
-        dir_dialog.item_type = "directory"
-        
+        dir_dialog = ConfirmationDialog(Path("/test/dir"), is_dir=True)
         assert str(dir_dialog.item_path) == "/test/dir"
         assert dir_dialog.is_dir is True
         assert dir_dialog.item_type == "directory"
@@ -142,7 +139,7 @@ class TestSortOptions:
 
     def test_sort_options_initialization(self):
         """Test that the sort options dialog initializes correctly."""
-        sort_options = SortOptions.__new__(SortOptions)
+        sort_options = SortOptions()
         assert sort_options is not None
 
 
@@ -157,7 +154,11 @@ def test_run_textual_ui():
         run_textual_ui(Path("/test"), 50, 30)
         
         # Check that ReclaimApp was instantiated with correct parameters
-        MockApp.assert_called_once_with(path=Path("/test"), max_files=50, max_dirs=30)
+        MockApp.assert_called_once()
+        args, kwargs = MockApp.call_args
+        assert kwargs.get('path') == Path("/test")
+        assert kwargs.get('max_files') == 50
+        assert kwargs.get('max_dirs') == 30
         
         # Check that run was called on the app instance
         mock_app_instance.run.assert_called_once()
