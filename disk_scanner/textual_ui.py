@@ -267,7 +267,7 @@ class ReclaimApp(App):
         color: $base1;
     }
 
-    RadioButton:checked {
+    RadioButton.-selected {
         background: $blue;
         color: $base3;
     }
@@ -484,7 +484,7 @@ class ReclaimApp(App):
         - Click on a row to select it
         - Press Delete to remove the selected item
         """
-        self.notify(help_text, severity="information", timeout=10)
+        self.notify(help_text, style="#93a1a1", timeout=10)
 
     @on(Button.Pressed, "#files-tab")
     def switch_to_files(self) -> None:
