@@ -80,7 +80,7 @@ def main(
                 run_textual_ui(path_obj, files, dirs)
                 return
             except ImportError as e:
-                console.print("[yellow]Could not load interactive UI. Make sure textual is installed.[/yellow]")
+                console.print("[yellow]Could not load interactive UI. Make sure the textual package is installed.[/yellow]")
                 console.print(f"[dim]Error: {e}[/dim]")
                 console.print("[green]Continuing with standard CLI mode...[/green]")
 

@@ -1,4 +1,4 @@
-"""Textual UI for disk scanner with interactive file/folder management."""
+"""Textual UI for reclaim with interactive file/folder management."""
 
 import os
 import shutil
@@ -80,8 +80,8 @@ class SortOptions(ModalScreen):
         self.dismiss(sort_option)
 
 
-class DiskScannerApp(App):
-    """Textual app for disk scanner with interactive file management."""
+class ReclaimApp(App):
+    """Textual app for reclaim with interactive file management."""
 
     CSS = """
     #header {
@@ -229,7 +229,7 @@ class DiskScannerApp(App):
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
-        yield Header(show_clock=True)
+        yield Header("Reclaim", show_clock=True)
         
         with Container(id="main-container"):
             yield Static(f"Path: {self.path}", id="path-display")
@@ -391,7 +391,7 @@ class DiskScannerApp(App):
     def action_help(self) -> None:
         """Show help information."""
         help_text = """
-        [bold]Disk Scanner Help[/]
+        [bold]Reclaim Help[/]
         
         [bold]Navigation:[/]
         - Arrow keys: Navigate tables
@@ -442,5 +442,5 @@ class DiskScannerApp(App):
 
 def run_textual_ui(path: Path, max_files: int = 100, max_dirs: int = 100) -> None:
     """Run the Textual UI application."""
-    app = DiskScannerApp(path, max_files, max_dirs)
+    app = ReclaimApp(path, max_files, max_dirs)
     app.run()

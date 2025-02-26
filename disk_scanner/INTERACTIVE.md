@@ -1,6 +1,6 @@
-# Interactive Mode for Disk Scanner
+# Interactive Mode for Reclaim
 
-The disk scanner now includes an interactive mode powered by the Textual library, which provides a terminal-based UI for exploring and managing your files and directories.
+Reclaim now includes an interactive mode powered by the Textual library, which provides a terminal-based UI for exploring and managing your files and directories.
 
 ## Getting Started
 
