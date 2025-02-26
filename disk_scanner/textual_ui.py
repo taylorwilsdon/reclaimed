@@ -455,9 +455,17 @@ class ReclaimApp(App):
             if row < len(table.rows):
                 # Get the path from the row key
                 row_data = table.get_row_at(row)
-                # The key is stored in the row_key attribute of the table for the specific row
-                path_str = table.get_row(row).key
-                path = Path(path_str)
+                
+                # In the current version of Textual, we need to access the key differently
+                # The key is stored when we add the row, so we need to look it up in our data
+                if self.current_view == "files" and row < len(self.largest_files):
+                    path = self.largest_files[row].path
+                elif self.current_view == "dirs" and row < len(self.largest_dirs):
+                    path = self.largest_dirs[row].path
+                else:
+                    self.notify("Could not determine the path for this item", timeout=5)
+                    return
+                    
                 is_dir = path.is_dir()
                 
                 # Show confirmation dialog
@@ -519,7 +527,7 @@ class ReclaimApp(App):
             items = self.largest_dirs
             
         if 0 <= row < len(items):
-            path = event.data_table.get_row_at(row).key
+            path = items[row].path
             self.notify(f"Selected: {path}", timeout=3)
 
     def focus_active_table(self) -> None:
