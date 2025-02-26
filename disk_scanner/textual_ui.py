@@ -330,6 +330,8 @@ class ReclaimApp(App):
     def on_mount(self) -> None:
         """Event handler called when the app is mounted."""
         self.scan_directory()
+        # Set initial focus to the files table after scan completes
+        self.set_timer(0.1, self.focus_active_table)
 
     def scan_directory(self) -> None:
         """Scan the directory and update the tables."""
@@ -346,6 +348,9 @@ class ReclaimApp(App):
         # Update the tables
         self.update_tables()
         
+        # Focus the active table after scan completes
+        self.set_timer(0.1, self.focus_active_table)
+        
         self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", timeout=5)
 
     def update_tables(self) -> None:
@@ -353,6 +358,7 @@ class ReclaimApp(App):
         # Update files table
         files_table = self.query_one("#files-table")
         files_table.clear()
+        files_table.can_focus = True
         
         for file_info in self.largest_files:
             try:
@@ -373,6 +379,7 @@ class ReclaimApp(App):
         # Update directories table
         dirs_table = self.query_one("#dirs-table")
         dirs_table.clear()
+        dirs_table.can_focus = True
         
         for dir_info in self.largest_dirs:
             try:
@@ -410,6 +417,7 @@ class ReclaimApp(App):
             self.query_one("#dirs-table").display = False
             self.query_one("#files-tab").add_class("active")
             self.query_one("#dirs-tab").remove_class("active")
+            self.focus_active_table()
 
     def action_toggle_dirs(self) -> None:
         """Switch to the directories view."""
@@ -419,6 +427,7 @@ class ReclaimApp(App):
             self.query_one("#dirs-table").display = True
             self.query_one("#files-tab").remove_class("active")
             self.query_one("#dirs-tab").add_class("active")
+            self.focus_active_table()
 
     def action_sort(self) -> None:
         """Show the sort options dialog."""
@@ -427,6 +436,7 @@ class ReclaimApp(App):
                 self.sort_method = sort_option
                 self.apply_sort(sort_option)
                 self.update_tables()
+                self.focus_active_table()
         
         self.push_screen(SortOptions(), handle_sort_result)
 
@@ -509,6 +519,18 @@ class ReclaimApp(App):
         if 0 <= row < len(items):
             path = event.data_table.get_row_at(row).key
             self.notify(f"Selected: {path}", timeout=3)
+
+    def focus_active_table(self) -> None:
+        """Focus the currently active table."""
+        table_id = "#files-table" if self.current_view == "files" else "#dirs-table"
+        table = self.query_one(table_id)
+        
+        # Only set focus if the table has rows
+        if len(table.rows) > 0:
+            self.set_focus(table)
+            # Set cursor to first row if no row is selected
+            if table.cursor_coordinate is None:
+                table.move_cursor(row=0, column=0)
 
     def on_unmount(self) -> None:
         """Event handler called when app is unmounted."""
