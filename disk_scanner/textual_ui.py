@@ -105,6 +105,15 @@ class ReclaimApp(App):
         height: 100%;
     }
 
+    #title {
+        dock: top;
+        height: 1;
+        background: $accent;
+        color: $text;
+        text-align: center;
+        text-style: bold;
+    }
+
     #path-display {
         dock: top;
         height: 1;
@@ -229,7 +238,8 @@ class ReclaimApp(App):
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
-        yield Header("Reclaim", show_clock=True)
+        yield Header(show_clock=True)
+        yield Static("[bold]Reclaim[/bold]", id="title")
         
         with Container(id="main-container"):
             yield Static(f"Path: {self.path}", id="path-display")
