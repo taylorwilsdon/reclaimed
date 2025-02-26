@@ -17,7 +17,8 @@ from .disk_scanner import DiskScanner
 
 def _format_storage_status(is_icloud: bool) -> str:
     """Format storage status with appropriate color and icon."""
-    color = "bright_blue" if is_icloud else "green"
+    # Using Solarized Dark colors
+    color = "#268bd2" if is_icloud else "#859900"  # blue for iCloud, green for local
     status = "☁️ iCloud" if is_icloud else "💾 Local"
     return f"[{color}]{status}[/]"
 
@@ -76,17 +77,17 @@ def main(
         if interactive:
             try:
                 from .textual_ui import run_textual_ui
-                console.print("[green]Launching interactive UI...[/green]")
+                console.print("[#859900]Launching interactive UI...[/#859900]")
                 run_textual_ui(path_obj, files, dirs)
                 return
             except ImportError as e:
-                console.print("[yellow]Could not load interactive UI. Make sure the textual package is installed.[/yellow]")
-                console.print(f"[dim]Error: {e}[/dim]")
-                console.print("[green]Continuing with standard CLI mode...[/green]")
+                console.print("[#b58900]Could not load interactive UI. Make sure the textual package is installed.[/#b58900]")
+                console.print(f"[#586e75]Error: {e}[/#586e75]")
+                console.print("[#859900]Continuing with standard CLI mode...[/#859900]")
 
         # Create header panel and start timer
         start_time = time.time()
-        header = Panel(Text(f"Scanning {path_obj}", style="bold green"), border_style="green")
+        header = Panel(Text(f"Scanning {path_obj}", style="#859900"), border_style="#268bd2")
         console.print(header)
 
         largest_files, largest_dirs = scanner.scan_directory(
@@ -97,16 +98,16 @@ def main(
 
         # Display results in tables
         file_table = Table(
-            title="[bold]Largest Files[/]",
-            border_style="cyan",
-            header_style="bold cyan",
+            title="[#93a1a1]Largest Files[/]",
+            border_style="#2aa198",  # cyan
+            header_style="#93a1a1",  # base1
             show_lines=True,
             padding=(0, 1),
             expand=True,
         )
-        file_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
-        file_table.add_column("Storage", style="yellow", no_wrap=True)
-        file_table.add_column("Path", style="bright_white", no_wrap=True, ratio=1, overflow="ellipsis")
+        file_table.add_column("Size", justify="right", style="#2aa198", no_wrap=True)  # cyan
+        file_table.add_column("Storage", style="#b58900", no_wrap=True)  # yellow
+        file_table.add_column("Path", style="#839496", no_wrap=True, ratio=1, overflow="ellipsis")  # base0
 
         # Calculate maximum width for the path column
         max_path_width = console.width - 20  # Adjust based on estimated width of other columns
@@ -126,15 +127,15 @@ def main(
             )
 
         dir_table = Table(
-            title="[bold]Largest Directories[/]",
-            border_style="blue",
-            header_style="bold blue",
+            title="[#93a1a1]Largest Directories[/]",
+            border_style="#268bd2",  # blue
+            header_style="#93a1a1",  # base1
             show_lines=True,
             padding=(0, 1),
         )
-        dir_table.add_column("Size", justify="right", style="cyan", width=8, no_wrap=True)
-        dir_table.add_column("Storage", style="yellow", width=12, no_wrap=True)
-        dir_table.add_column("Path", style="bright_white")
+        dir_table.add_column("Size", justify="right", style="#2aa198", width=8, no_wrap=True)  # cyan
+        dir_table.add_column("Storage", style="#b58900", width=12, no_wrap=True)  # yellow
+        dir_table.add_column("Path", style="#839496")  # base0
 
         for dir_item in largest_dirs:
             try:
@@ -151,7 +152,7 @@ def main(
 
         # Calculate and display elapsed time
         elapsed_time = time.time() - start_time
-        time_text = Text(f"Scan completed in {elapsed_time:.2f} seconds", style="bold green")
+        time_text = Text(f"Scan completed in {elapsed_time:.2f} seconds", style="#859900")
         console.print()
         console.print(file_table)
         console.print()
@@ -162,8 +163,8 @@ def main(
         if output:
             scanner.save_results(Path(output), largest_files, largest_dirs, path_obj)
             save_panel = Panel(
-                Text(f"Results saved to: {output}", style="green"),
-                border_style="green",
+                Text(f"Results saved to: {output}", style="#859900"),
+                border_style="#268bd2",
             )
             console.print("\n", save_panel)
 

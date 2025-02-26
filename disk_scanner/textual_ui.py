@@ -84,20 +84,42 @@ class ReclaimApp(App):
     """Textual app for reclaim with interactive file management."""
 
     CSS = """
+    /* Solarized Dark color palette */
+    $base03: #002b36;
+    $base02: #073642;
+    $base01: #586e75;
+    $base00: #657b83;
+    $base0: #839496;
+    $base1: #93a1a1;
+    $base2: #eee8d5;
+    $base3: #fdf6e3;
+    $yellow: #b58900;
+    $orange: #cb4b16;
+    $red: #dc322f;
+    $magenta: #d33682;
+    $violet: #6c71c4;
+    $blue: #268bd2;
+    $cyan: #2aa198;
+    $green: #859900;
+
+    Screen {
+        background: $base03;
+        color: $base0;
+    }
+
     #header {
         dock: top;
         height: 1;
-        background: $accent;
-        color: $text;
+        background: $base02;
+        color: $base1;
         text-align: center;
-        text-style: bold;
     }
 
     #footer {
         dock: bottom;
         height: 1;
-        background: $accent;
-        color: $text;
+        background: $base02;
+        color: $base1;
     }
 
     #main-container {
@@ -108,61 +130,76 @@ class ReclaimApp(App):
     #title {
         dock: top;
         height: 1;
-        background: $accent;
-        color: $text;
+        background: $base02;
+        color: $blue;
         text-align: center;
-        text-style: bold;
     }
 
     #path-display {
         dock: top;
         height: 1;
-        background: $panel;
-        color: $text-muted;
+        background: $base02;
+        color: $base01;
         padding: 0 1;
     }
 
     #tabs-container {
         dock: top;
         height: 3;
-        background: $surface;
-        color: $text;
+        background: $base03;
+        color: $base0;
     }
 
     .tab-button {
         width: 50%;
         height: 3;
         content-align: center middle;
+        background: $base02;
+        color: $base1;
     }
 
     .tab-button.active {
-        background: $accent;
-        color: $text;
-        text-style: bold;
+        background: $blue;
+        color: $base3;
     }
 
     .tab-button:hover {
-        background: $accent-darken-1;
+        background: $base01;
     }
 
     #files-table, #dirs-table {
         height: 100%;
         width: 100%;
+        background: $base03;
+        color: $base0;
+    }
+
+    DataTable {
+        border: none;
+    }
+
+    DataTable > .datatable--header {
+        background: $base02;
+        color: $base1;
+    }
+
+    DataTable > .datatable--cursor {
+        background: $base01;
     }
 
     #dialog-container {
         width: 60%;
         height: auto;
-        background: $surface;
-        border: tall $primary;
+        background: $base02;
+        border: tall $blue;
         padding: 1 2;
     }
 
     #dialog-title {
-        text-style: bold;
         width: 100%;
         height: 1;
         content-align: center middle;
+        color: $base1;
     }
 
     #dialog-path {
@@ -170,6 +207,7 @@ class ReclaimApp(App):
         height: 3;
         content-align: center middle;
         margin: 1 0;
+        color: $red;
     }
 
     #dialog-buttons {
@@ -182,17 +220,17 @@ class ReclaimApp(App):
     #sort-container {
         width: 40%;
         height: auto;
-        background: $surface;
-        border: tall $primary;
+        background: $base02;
+        border: tall $blue;
         padding: 1 2;
     }
 
     #sort-title {
-        text-style: bold;
         width: 100%;
         height: 1;
         content-align: center middle;
         margin-bottom: 1;
+        color: $base1;
     }
 
     #sort-buttons {
@@ -204,6 +242,34 @@ class ReclaimApp(App):
 
     Button {
         margin: 0 1;
+        background: $base01;
+        color: $base2;
+    }
+
+    Button:hover {
+        background: $base00;
+    }
+
+    Button.primary {
+        background: $blue;
+    }
+
+    Button.success {
+        background: $green;
+    }
+
+    Button.error {
+        background: $red;
+    }
+
+    RadioButton {
+        background: $base02;
+        color: $base1;
+    }
+
+    RadioButton:checked {
+        background: $blue;
+        color: $base3;
     }
     """
 
@@ -267,7 +333,7 @@ class ReclaimApp(App):
 
     def scan_directory(self) -> None:
         """Scan the directory and update the tables."""
-        self.notify("Scanning directory... This may take a while.")
+        self.notify("Scanning directory... This may take a while.", style="#b58900")
         
         # Perform the scan
         self.largest_files, self.largest_dirs = self.scanner.scan_directory(
@@ -280,7 +346,7 @@ class ReclaimApp(App):
         # Update the tables
         self.update_tables()
         
-        self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.")
+        self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", style="#859900")
 
     def update_tables(self) -> None:
         """Update the data tables with current data."""
@@ -295,7 +361,7 @@ class ReclaimApp(App):
                 rel_path = file_info.path
                 
             storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style="bright_blue" if file_info.is_icloud else "green")
+            storage_cell = Text(storage_status, style="#268bd2" if file_info.is_icloud else "#859900")
             
             files_table.add_row(
                 self.scanner.format_size(file_info.size),
@@ -315,7 +381,7 @@ class ReclaimApp(App):
                 rel_path = dir_info.path
                 
             storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style="bright_blue" if dir_info.is_icloud else "green")
+            storage_cell = Text(storage_status, style="#268bd2" if dir_info.is_icloud else "#859900")
             
             dirs_table.add_row(
                 self.scanner.format_size(dir_info.size),
@@ -390,31 +456,31 @@ class ReclaimApp(App):
                                 shutil.rmtree(path)
                             else:
                                 os.remove(path)
-                            self.notify(f"Successfully deleted {path}", severity="information")
+                            self.notify(f"Successfully deleted {path}", style="#859900")
                             # Refresh the view
                             self.scan_directory()
                         except Exception as e:
-                            self.notify(f"Error deleting {path}: {e}", severity="error")
+                            self.notify(f"Error deleting {path}: {e}", style="#dc322f")
                 
                 self.push_screen(ConfirmationDialog(path, is_dir), handle_confirmation)
 
     def action_help(self) -> None:
         """Show help information."""
         help_text = """
-        [bold]Reclaim Help[/]
+        [#93a1a1]Reclaim Help[/]
         
-        [bold]Navigation:[/]
+        [#268bd2]Navigation:[/]
         - Arrow keys: Navigate tables
         - F: Switch to Files view
         - D: Switch to Directories view
         
-        [bold]Actions:[/]
+        [#268bd2]Actions:[/]
         - Delete: Delete selected item
         - S: Sort items
         - R: Refresh scan
         - Q: Quit application
         
-        [bold]Selection:[/]
+        [#268bd2]Selection:[/]
         - Click on a row to select it
         - Press Delete to remove the selected item
         """
