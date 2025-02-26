@@ -60,7 +60,8 @@ class TestReclaimApp:
 
     def test_app_initialization(self):
         """Test that the app initializes correctly."""
-        with patch("disk_scanner.textual_ui.DiskScanner") as mock_scanner_class:
+        with patch("disk_scanner.textual_ui.App.__init__", return_value=None), \
+             patch("disk_scanner.textual_ui.DiskScanner") as mock_scanner_class:
             mock_scanner = MagicMock()
             mock_scanner_class.return_value = mock_scanner
             
@@ -68,7 +69,6 @@ class TestReclaimApp:
             with patch("pathlib.Path.resolve", return_value=Path("/test")):
                 app = ReclaimApp(Path("/test"))
             
-                # Use MagicMock's __eq__ for comparison instead of direct equality
                 assert str(app.path) == str(Path("/test"))
                 assert app.max_files == 100
                 assert app.max_dirs == 100
@@ -79,7 +79,8 @@ class TestReclaimApp:
     def test_apply_sort(self):
         """Test the sort functionality."""
         # Create a mock app with patched initialization
-        with patch("disk_scanner.textual_ui.DiskScanner"):
+        with patch("disk_scanner.textual_ui.App.__init__", return_value=None), \
+             patch("disk_scanner.textual_ui.DiskScanner"):
             with patch("pathlib.Path.resolve", return_value=Path("/test")):
                 app = ReclaimApp(Path("/test"))
         
@@ -116,7 +117,7 @@ class TestConfirmationDialog:
     def test_dialog_initialization(self):
         """Test that the dialog initializes correctly."""
         # Since we're mocking the ModalScreen parent class, we need to patch the super().__init__
-        with patch("disk_scanner.textual_ui.ModalScreen.__init__", return_value=None):
+        with patch("disk_scanner.textual_ui.ModalScreen", MagicMock()):
             # Test file dialog
             file_dialog = ConfirmationDialog(Path("/test/file.txt"), is_dir=False)
             assert str(file_dialog.item_path) == str(Path("/test/file.txt"))
@@ -135,8 +136,9 @@ class TestSortOptions:
 
     def test_sort_options_initialization(self):
         """Test that the sort options dialog initializes correctly."""
-        sort_options = SortOptions()
-        assert sort_options is not None
+        with patch("disk_scanner.textual_ui.ModalScreen", MagicMock()):
+            sort_options = SortOptions()
+            assert sort_options is not None
 
 
 def test_run_textual_ui():
@@ -152,6 +154,7 @@ def test_run_textual_ui():
         # Check that ReclaimApp was instantiated with correct parameters
         MockApp.assert_called_once()
         args, kwargs = MockApp.call_args
+        assert len(args) == 0  # Should be using kwargs
         assert kwargs.get('path') == Path("/test")
         assert kwargs.get('max_files') == 50
         assert kwargs.get('max_dirs') == 30

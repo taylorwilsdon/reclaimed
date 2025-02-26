@@ -550,5 +550,5 @@ class ReclaimApp(App):
 
 def run_textual_ui(path: Path, max_files: int = 100, max_dirs: int = 100) -> None:
     """Run the Textual UI application."""
-    app = ReclaimApp(path, max_files, max_dirs)
+    app = ReclaimApp(path=path, max_files=max_files, max_dirs=max_dirs)
     app.run()
