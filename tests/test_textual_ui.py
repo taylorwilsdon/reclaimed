@@ -6,15 +6,34 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from textual.app import App
-from textual.widgets import DataTable
+# Mock the textual imports to avoid requiring the package for tests
+sys.modules['textual'] = MagicMock()
+sys.modules['textual.app'] = MagicMock()
+sys.modules['textual.widgets'] = MagicMock()
+sys.modules['textual.binding'] = MagicMock()
+sys.modules['textual.containers'] = MagicMock()
+sys.modules['textual.screen'] = MagicMock()
+sys.modules['textual.on'] = MagicMock()
+sys.modules['rich.text'] = MagicMock()
 
-from disk_scanner.textual_ui import (
-    ReclaimApp, 
-    ConfirmationDialog, 
-    SortOptions,
-    run_textual_ui
-)
+# Import after mocking
+with patch.dict('sys.modules', {
+    'textual': sys.modules['textual'],
+    'textual.app': sys.modules['textual.app'],
+    'textual.widgets': sys.modules['textual.widgets'],
+    'textual.binding': sys.modules['textual.binding'],
+    'textual.containers': sys.modules['textual.containers'],
+    'textual.screen': sys.modules['textual.screen'],
+    'textual.on': sys.modules['textual.on'],
+    'rich.text': sys.modules['rich.text']
+}):
+    from disk_scanner.textual_ui import (
+        ReclaimApp, 
+        ConfirmationDialog, 
+        SortOptions,
+        run_textual_ui
+    )
+
 from disk_scanner.disk_scanner import FileInfo, DiskScanner
 
 
@@ -39,15 +58,14 @@ def mock_dir_info():
 class TestReclaimApp:
     """Test the ReclaimApp class."""
 
-    @pytest.mark.asyncio
-    async def test_app_initialization(self):
+    def test_app_initialization(self):
         """Test that the app initializes correctly."""
         with patch("disk_scanner.textual_ui.DiskScanner") as mock_scanner_class:
             mock_scanner = MagicMock()
             mock_scanner_class.return_value = mock_scanner
-            
+        
             app = ReclaimApp(Path("/test"))
-            
+        
             assert app.path == Path("/test").resolve()
             assert app.max_files == 100
             assert app.max_dirs == 100
@@ -55,30 +73,29 @@ class TestReclaimApp:
             assert app.sort_method == "sort-size"
             assert mock_scanner_class.called
 
-    @pytest.mark.asyncio
-    async def test_apply_sort(self):
+    def test_apply_sort(self):
         """Test the sort functionality."""
         app = ReclaimApp(Path("/test"))
-        
+    
         # Create test data
         app.largest_files = [
             FileInfo(Path("/test/c.txt"), 1000, False),
             FileInfo(Path("/test/a.txt"), 3000, False),
             FileInfo(Path("/test/b.txt"), 2000, False),
         ]
-        
+    
         # Test sort by name
         app.apply_sort("sort-name")
         assert app.largest_files[0].path.name == "a.txt"
         assert app.largest_files[1].path.name == "b.txt"
         assert app.largest_files[2].path.name == "c.txt"
-        
+    
         # Test sort by path
         app.apply_sort("sort-path")
         assert "a.txt" in str(app.largest_files[0].path)
         assert "b.txt" in str(app.largest_files[1].path)
         assert "c.txt" in str(app.largest_files[2].path)
-        
+    
         # Test sort by size (default)
         app.apply_sort("sort-size")
         # The original data is already sorted by size in reverse order
