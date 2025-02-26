@@ -1,8 +1,10 @@
 """Command line interface for reclaim"""
 
+import os
 import sys
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Any
 
 import click
 from rich.console import Console
@@ -20,13 +22,35 @@ def _format_storage_status(is_icloud: bool) -> str:
     return f"[{color}]{status}[/]"
 
 
+def _truncate_path(path: str, max_width: int) -> str:
+    """Truncate the path from the left at path separators to fit within max_width."""
+    if len(path) <= max_width:
+        return path
+
+    # Use os.path.sep for cross-platform compatibility
+    sep = os.path.sep
+    parts = path.split(sep)
+    truncated = ''
+
+    for i in range(len(parts)):
+        truncated = f'...{sep}' + f'{sep}'.join(parts[i:])
+        if len(truncated) <= max_width:
+            return truncated
+
+    return '...' + path[-max_width + 3:]
+
+
 @click.command()
 @click.argument("path", type=click.Path(exists=True), default=".")
 @click.option("--files", "-f", default=10, help="Number of largest files to show")
 @click.option("--dirs", "-d", default=10, help="Number of largest directories to show")
 @click.option("--output", "-o", type=click.Path(), help="Save results to JSON file")
 def main(
-    path: str, files: int, dirs: int, output: Optional[str], console: Optional[Console] = None
+    path: str,
+    files: int,
+    dirs: int,
+    output: Optional[str],
+    console: Optional[Console] = None
 ) -> None:
     """Analyze disk usage and optimize storage with Reclaim.
 
@@ -36,16 +60,25 @@ def main(
     scanner = DiskScanner(console)
 
     try:
+        # Validate inputs
+        if files <= 0 or dirs <= 0:
+            console.print("[red]Error: Files and directories count must be positive")
+            sys.exit(1)
+
         path_obj = Path(path).resolve()
         if not path_obj.is_dir():
             console.print("[red]Error: Specified path must be a directory")
             sys.exit(1)
 
-        # Create header panel
+        # Create header panel and start timer
+        start_time = time.time()
         header = Panel(Text(f"Scanning {path_obj}", style="bold green"), border_style="green")
         console.print(header)
+
         largest_files, largest_dirs = scanner.scan_directory(
-            path_obj, max_files=files, max_dirs=dirs
+            path_obj,
+            max_files=files,
+            max_dirs=dirs,
         )
 
         # Display results in tables
@@ -55,16 +88,27 @@ def main(
             header_style="bold cyan",
             show_lines=True,
             padding=(0, 1),
+            expand=True,
         )
-        file_table.add_column("Size", justify="right", style="cyan", width=8, no_wrap=True)
-        file_table.add_column("Storage", style="yellow", width=12, no_wrap=True)
-        file_table.add_column("Path", style="bright_white")
+        file_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
+        file_table.add_column("Storage", style="yellow", no_wrap=True)
+        file_table.add_column("Path", style="bright_white", no_wrap=True, ratio=1, overflow="ellipsis")
 
+        # Calculate maximum width for the path column
+        max_path_width = console.width - 20  # Adjust based on estimated width of other columns
         for file in largest_files:
+            try:
+                full_path = str(file.path.relative_to(path_obj))
+            except ValueError:
+                # Handle files not relative to base path
+                full_path = str(file.path)
+
+            truncated_path = _truncate_path(full_path, max_path_width)
+            path_text = Text(truncated_path)
             file_table.add_row(
                 scanner.format_size(file.size),
                 _format_storage_status(file.is_icloud),
-                str(file.path.name),  # Show just the filename for cleaner output
+                path_text,
             )
 
         dir_table = Table(
@@ -78,17 +122,27 @@ def main(
         dir_table.add_column("Storage", style="yellow", width=12, no_wrap=True)
         dir_table.add_column("Path", style="bright_white")
 
-        for dir in largest_dirs:
+        for dir_item in largest_dirs:
+            try:
+                dir_path = str(dir_item.path.relative_to(path_obj))
+            except ValueError:
+                # Handle directories not relative to base path
+                dir_path = str(dir_item.path)
+
             dir_table.add_row(
-                scanner.format_size(dir.size),
-                _format_storage_status(dir.is_icloud),
-                str(dir.path.name),  # Show just the directory name for cleaner output
+                scanner.format_size(dir_item.size),
+                _format_storage_status(dir_item.is_icloud),
+                dir_path,
             )
 
+        # Calculate and display elapsed time
+        elapsed_time = time.time() - start_time
+        time_text = Text(f"Scan completed in {elapsed_time:.2f} seconds", style="bold green")
         console.print()
         console.print(file_table)
         console.print()
         console.print(dir_table)
+        console.print(time_text)
 
         # Save results to file if requested
         if output:
