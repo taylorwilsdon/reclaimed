@@ -333,7 +333,7 @@ class ReclaimApp(App):
 
     def scan_directory(self) -> None:
         """Scan the directory and update the tables."""
-        self.notify("Scanning directory... This may take a while.", style="#b58900")
+        self.notify("Scanning directory... This may take a while.", timeout=5)
         
         # Perform the scan
         self.largest_files, self.largest_dirs = self.scanner.scan_directory(
@@ -346,7 +346,7 @@ class ReclaimApp(App):
         # Update the tables
         self.update_tables()
         
-        self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", style="#859900")
+        self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", timeout=5)
 
     def update_tables(self) -> None:
         """Update the data tables with current data."""
@@ -456,11 +456,11 @@ class ReclaimApp(App):
                                 shutil.rmtree(path)
                             else:
                                 os.remove(path)
-                            self.notify(f"Successfully deleted {path}", style="#859900")
+                            self.notify(f"Successfully deleted {path}", timeout=5)
                             # Refresh the view
                             self.scan_directory()
                         except Exception as e:
-                            self.notify(f"Error deleting {path}: {e}", style="#dc322f")
+                            self.notify(f"Error deleting {path}: {e}", timeout=5)
                 
                 self.push_screen(ConfirmationDialog(path, is_dir), handle_confirmation)
 
@@ -484,7 +484,7 @@ class ReclaimApp(App):
         - Click on a row to select it
         - Press Delete to remove the selected item
         """
-        self.notify(help_text, style="#93a1a1", timeout=10)
+        self.notify(help_text, timeout=10)
 
     @on(Button.Pressed, "#files-tab")
     def switch_to_files(self) -> None:
@@ -508,7 +508,7 @@ class ReclaimApp(App):
             
         if 0 <= row < len(items):
             path = event.data_table.get_row_at(row).key
-            self.notify(f"Selected: {path}")
+            self.notify(f"Selected: {path}", timeout=3)
 
     def on_unmount(self) -> None:
         """Event handler called when app is unmounted."""
