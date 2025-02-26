@@ -286,16 +286,46 @@ def main() -> None:
 
     # Display summary results
     console = scanner.console
-    console.print("\n[bold green]Top Files:[/bold green]")
+    # Display results in tables
+    file_table = Table(
+        title="[bold]Largest Files[/]",
+        border_style="cyan",
+        header_style="bold cyan",
+        show_lines=True,
+        padding=(0, 1),
+        expand=True,
+    )
+    file_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
+    file_table.add_column("Storage", style="yellow", no_wrap=True)
+    file_table.add_column("Path", style="bright_white")
     for f in largest_files:
-        console.print(
-            f"{f.path} | {scanner.format_size(f.size)} | {'iCloud' if f.is_icloud else 'local'}"
+        file_table.add_row(
+            scanner.format_size(f.size),
+            "☁️ iCloud" if f.is_icloud else "💾 Local",
+            str(f.path.relative_to(args.path)),
         )
-    console.print("\n[bold green]Top Directories:[/bold green]")
+    console.print()
+    console.print(file_table)
+
+    dir_table = Table(
+        title="[bold]Largest Directories[/]",
+        border_style="blue",
+        header_style="bold blue",
+        show_lines=True,
+        padding=(0, 1),
+        expand=True,
+    )
+    dir_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
+    dir_table.add_column("Storage", style="yellow", no_wrap=True)
+    dir_table.add_column("Path", style="bright_white")
     for d in largest_dirs:
-        console.print(
-            f"{d.path} | {scanner.format_size(d.size)} | {'iCloud' if d.is_icloud else 'local'}"
+        dir_table.add_row(
+            scanner.format_size(d.size),
+            "☁️ iCloud" if d.is_icloud else "💾 Local",
+            str(d.path.relative_to(args.path)),
         )
+    console.print()
+    console.print(dir_table)
 
     # Save the results
     scanner.save_results(args.output, largest_files, largest_dirs, args.path)

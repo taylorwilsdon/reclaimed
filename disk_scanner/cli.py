@@ -72,7 +72,7 @@ def main(
         if not path_obj.is_dir():
             console.print("[red]Error: Specified path must be a directory")
             sys.exit(1)
-            
+
         # Launch interactive UI if requested
         if interactive:
             try:

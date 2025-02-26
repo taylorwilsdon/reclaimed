@@ -12,7 +12,7 @@ from textual.binding import Binding
 from textual.containers import Container, Vertical, Horizontal
 from textual.screen import Screen, ModalScreen
 from textual.widgets import (
-    Button, DataTable, Footer, Header, Static, 
+    Button, DataTable, Footer, Header, Static,
     Label, Input, RadioSet, RadioButton
 )
 
@@ -33,10 +33,10 @@ class ConfirmationDialog(ModalScreen):
         with Container(id="dialog-container"):
             yield Static(f"Are you sure you want to delete this {self.item_type}?", id="dialog-title")
             yield Static(f"[bold red]{self.item_path}[/]", id="dialog-path")
-            
+
             if self.is_dir:
                 yield Static("[yellow]Warning: This will delete all contents recursively![/]")
-            
+
             with Horizontal(id="dialog-buttons"):
                 yield Button("Cancel", variant="primary", id="cancel-button")
                 yield Button("Delete", variant="error", id="confirm-button")
@@ -63,7 +63,7 @@ class SortOptions(ModalScreen):
                 yield RadioButton("Size (largest first)", id="sort-size", value=True)
                 yield RadioButton("Name (A-Z)", id="sort-name")
                 yield RadioButton("Path (A-Z)", id="sort-path")
-            
+
             with Horizontal(id="sort-buttons"):
                 yield Button("Cancel", variant="primary", id="sort-cancel")
                 yield Button("Apply", variant="success", id="sort-apply")
@@ -284,9 +284,9 @@ class ReclaimApp(App):
     ]
 
     def __init__(
-        self, 
-        path: Path, 
-        max_files: int = 100, 
+        self,
+        path: Path,
+        max_files: int = 100,
         max_dirs: int = 100,
         on_exit_callback: Optional[Callable] = None
     ):
@@ -306,25 +306,25 @@ class ReclaimApp(App):
         """Compose the app layout."""
         yield Header(show_clock=True)
         yield Static("[bold]Reclaim[/bold]", id="title")
-        
+
         with Container(id="main-container"):
             yield Static(f"Path: {self.path}", id="path-display")
-            
+
             with Container(id="tabs-container"):
                 yield Button("Files", id="files-tab", classes="tab-button active")
                 yield Button("Directories", id="dirs-tab", classes="tab-button")
-            
+
             # Files table
             files_table = DataTable(id="files-table")
             files_table.add_columns("Size", "Storage", "Path")
             yield files_table
-            
+
             # Directories table (initially hidden)
             dirs_table = DataTable(id="dirs-table")
             dirs_table.add_columns("Size", "Storage", "Path")
             dirs_table.display = False
             yield dirs_table
-        
+
         yield Footer()
 
     def on_mount(self) -> None:
@@ -336,21 +336,21 @@ class ReclaimApp(App):
     def scan_directory(self) -> None:
         """Scan the directory and update the tables."""
         self.notify("Scanning directory... This may take a while.", timeout=5)
-        
+
         # Perform the scan
         self.largest_files, self.largest_dirs = self.scanner.scan_directory(
             self.path, self.max_files, self.max_dirs
         )
-        
+
         # Apply current sort
         self.apply_sort(self.sort_method)
-        
+
         # Update the tables
         self.update_tables()
-        
+
         # Focus the active table after scan completes
         self.set_timer(0.1, self.focus_active_table)
-        
+
         self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", timeout=5)
 
     def update_tables(self) -> None:
@@ -359,37 +359,37 @@ class ReclaimApp(App):
         files_table = self.query_one("#files-table")
         files_table.clear()
         files_table.can_focus = True
-        
+
         for file_info in self.largest_files:
             try:
                 rel_path = file_info.path.relative_to(self.path)
             except ValueError:
                 rel_path = file_info.path
-                
+
             storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
             storage_cell = Text(storage_status, style="#268bd2" if file_info.is_icloud else "#859900")
-            
+
             files_table.add_row(
                 self.scanner.format_size(file_info.size),
                 storage_cell,
                 str(rel_path),
                 key=str(file_info.path)
             )
-        
+
         # Update directories table
         dirs_table = self.query_one("#dirs-table")
         dirs_table.clear()
         dirs_table.can_focus = True
-        
+
         for dir_info in self.largest_dirs:
             try:
                 rel_path = dir_info.path.relative_to(self.path)
             except ValueError:
                 rel_path = dir_info.path
-                
+
             storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
             storage_cell = Text(storage_status, style="#268bd2" if dir_info.is_icloud else "#859900")
-            
+
             dirs_table.add_row(
                 self.scanner.format_size(dir_info.size),
                 storage_cell,
@@ -437,7 +437,7 @@ class ReclaimApp(App):
                 self.apply_sort(sort_option)
                 self.update_tables()
                 self.focus_active_table()
-        
+
         self.push_screen(SortOptions(), handle_sort_result)
 
     def action_refresh(self) -> None:
@@ -448,14 +448,14 @@ class ReclaimApp(App):
         """Delete the selected file or directory."""
         # Get the current table based on the view
         table = self.query_one("#files-table" if self.current_view == "files" else "#dirs-table")
-        
+
         # Check if a row is selected
         if table.cursor_coordinate is not None:
             row = table.cursor_coordinate.row
             if row < len(table.rows):
                 # Get the path from the row key
                 row_data = table.get_row_at(row)
-                
+
                 # In the current version of Textual, we need to access the key differently
                 # The key is stored when we add the row, so we need to look it up in our data
                 if self.current_view == "files" and row < len(self.largest_files):
@@ -465,9 +465,9 @@ class ReclaimApp(App):
                 else:
                     self.notify("Could not determine the path for this item", timeout=5)
                     return
-                    
+
                 is_dir = path.is_dir()
-                
+
                 # Show confirmation dialog
                 def handle_confirmation(confirmed: bool) -> None:
                     if confirmed:
@@ -481,25 +481,25 @@ class ReclaimApp(App):
                             self.scan_directory()
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
-                
+
                 self.push_screen(ConfirmationDialog(path, is_dir), handle_confirmation)
 
     def action_help(self) -> None:
         """Show help information."""
         help_text = """
         [#93a1a1]Reclaim Help[/]
-        
+
         [#268bd2]Navigation:[/]
         - Arrow keys: Navigate tables
         - F: Switch to Files view
         - D: Switch to Directories view
-        
+
         [#268bd2]Actions:[/]
         - Delete: Delete selected item
         - S: Sort items
         - R: Refresh scan
         - Q: Quit application
-        
+
         [#268bd2]Selection:[/]
         - Click on a row to select it
         - Press Delete to remove the selected item
@@ -520,12 +520,12 @@ class ReclaimApp(App):
         """Handle row selection in data tables."""
         table_id = event.data_table.id
         row = event.cursor_coordinate.row
-        
+
         if table_id == "files-table":
             items = self.largest_files
         else:
             items = self.largest_dirs
-            
+
         if 0 <= row < len(items):
             path = items[row].path
             self.notify(f"Selected: {path}", timeout=3)
@@ -534,7 +534,7 @@ class ReclaimApp(App):
         """Focus the currently active table."""
         table_id = "#files-table" if self.current_view == "files" else "#dirs-table"
         table = self.query_one(table_id)
-        
+
         # Only set focus if the table has rows
         if len(table.rows) > 0:
             self.set_focus(table)
