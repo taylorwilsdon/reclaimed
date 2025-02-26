@@ -1,6 +1,6 @@
 # reclaim 🌟
 
-A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface. I let aider write the README.md boilerplate and it's all accurate but I'm still not sure how we feel about the emojis... it seems Claude is a colorful gentleman when writing markdown.
+A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
 
 ![Disk Scanner Demo](demo.gif)
 
@@ -8,12 +8,14 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 ## Features
 
-- 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficently 
+- 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficiently 
 - ☁️ Smart detection of iCloud vs local storage which is nice on the macbook
-- 📊 She pretty (it utilizes the [Textualize/rich](https://github.com/Textualize/rich) library for fancy CLI stylings)
+- 📊 Beautiful UI (utilizing [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
+- 🖥️ Interactive terminal UI for browsing and managing files/directories
+- 🗑️ Delete large files and directories directly from the interface
 - 💾 Export results to JSON for further analysis or batch operations
-- ⚡️ Real-time progress indication actually great
-- 🛡️ Graceful handling of permission issues, doesn't freeze like the old diskinventoryx
+- ⚡️ Real-time progress indication
+- 🛡️ Graceful handling of permission issues
 
 ## Installation
 
@@ -60,14 +62,24 @@ reclaim ~/Documents --output results.json
 - `-f, --files N`: Number of largest files to show (default: 10)
 - `-d, --dirs N`: Number of largest directories to show (default: 10)
 - `-o, --output FILE`: Save results to JSON file
+- `-i, --interactive`: Launch the interactive Textual UI
 
 ## Output
 
+### CLI Mode
 The tool provides:
 - A real-time progress indicator showing files scanned and total size
 - Two tables showing the largest files and directories
 - Clear indication of iCloud vs local storage
 - Summary of any access issues encountered
+
+### Interactive Mode
+The interactive UI provides:
+- Tabbed interface to switch between files and directories views
+- Keyboard navigation (arrow keys) to browse through items
+- Ability to sort items by size, name, or path
+- File/directory deletion with confirmation dialog
+- Refresh capability to update the scan results
 
 ## Development
 
@@ -94,7 +106,38 @@ hatch run lint
 
 # Build distribution packages
 hatch build
+
+# Run with interactive UI
+python -m disk_scanner.cli /path/to/scan -i
 ```
+
+## Interactive Mode
+
+Launch the interactive mode with the `-i` or `--interactive` flag:
+
+```bash
+reclaim ~/Documents -i
+```
+
+### Keyboard Shortcuts
+
+| Key       | Action                    |
+|-----------|---------------------------|
+| F         | Switch to Files view      |
+| D         | Switch to Directories view|
+| S         | Sort items                |
+| R         | Refresh scan              |
+| Delete    | Delete selected item      |
+| ?         | Show help                 |
+| Q         | Quit application          |
+| Arrow keys| Navigate through items    |
+
+### Features
+
+- **Tabbed Interface**: Toggle between Files and Directories views
+- **Sorting**: Sort items by size (default), name, or path
+- **File Management**: Delete files and directories with confirmation
+- **Solarized Dark Theme**: Easy on the eyes for extended use
 
 ## Contributing
 
