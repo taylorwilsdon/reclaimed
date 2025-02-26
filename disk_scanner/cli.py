@@ -45,11 +45,13 @@ def _truncate_path(path: str, max_width: int) -> str:
 @click.option("--files", "-f", default=10, help="Number of largest files to show")
 @click.option("--dirs", "-d", default=10, help="Number of largest directories to show")
 @click.option("--output", "-o", type=click.Path(), help="Save results to JSON file")
+@click.option("--interactive", "-i", is_flag=True, help="Launch interactive Textual UI")
 def main(
     path: str,
     files: int,
     dirs: int,
     output: Optional[str],
+    interactive: bool = False,
     console: Optional[Console] = None
 ) -> None:
     """Analyze disk usage and optimize storage with Reclaim.
@@ -69,6 +71,18 @@ def main(
         if not path_obj.is_dir():
             console.print("[red]Error: Specified path must be a directory")
             sys.exit(1)
+            
+        # Launch interactive UI if requested
+        if interactive:
+            try:
+                from .textual_ui import run_textual_ui
+                console.print("[green]Launching interactive UI...[/green]")
+                run_textual_ui(path_obj, files, dirs)
+                return
+            except ImportError as e:
+                console.print("[yellow]Could not load interactive UI. Make sure textual is installed.[/yellow]")
+                console.print(f"[dim]Error: {e}[/dim]")
+                console.print("[green]Continuing with standard CLI mode...[/green]")
 
         # Create header panel and start timer
         start_time = time.time()

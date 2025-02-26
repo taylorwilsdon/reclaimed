@@ -3,3 +3,4 @@ rich>=10.0.0
 black>=22.0.0
 mypy>=0.950
 hatch>=1.7.0
+textual>=0.38.1
