@@ -14,7 +14,7 @@ textual_ui_mock.run_textual_ui = mock.MagicMock()
 
 # Apply module-level mocking
 with mock.patch.dict('sys.modules', {'disk_scanner.textual_ui': textual_ui_mock}):
-    # Import the main function directly from disk_scanner.cli
+    # Import the main function directly from the cli module
     from disk_scanner.cli import main
 
 
