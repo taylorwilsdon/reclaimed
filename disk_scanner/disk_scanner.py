@@ -12,18 +12,8 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
-
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
-
-# Set up basic logging (could be extended)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
-# Constant for directories to skip during scanning
-SKIP_DIRS = [".Trash", "System Volume Information"]
-
+from dataclasses import dataclass
+from typing import AsyncIterator, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 class FileInfo(NamedTuple):
     """Store file information in an immutable structure."""
@@ -31,6 +21,29 @@ class FileInfo(NamedTuple):
     path: Path
     size: int
     is_icloud: bool = False
+
+@dataclass
+class ScanProgress:
+    progress: float
+    files: List[FileInfo]
+    dirs: List[FileInfo]
+    scanned: int
+    total_size: int
+
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+
+from .styles import (
+    BASE03, BASE02, BASE01, BASE00, BASE0, BASE1, BASE2, BASE3,
+    YELLOW, ORANGE, RED, MAGENTA, VIOLET, BLUE, CYAN, GREEN
+)
+
+# Set up basic logging (could be extended)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+# Constant for directories to skip during scanning
+SKIP_DIRS = [".Trash", "System Volume Information"]
 
 
 class DiskScanner:
@@ -46,9 +59,9 @@ class DiskScanner:
         self._total_size: int = 0
         self._file_count: int = 0
 
-    def scan_directory(
+    async def scan_directory_async(
         self, root_path: Path, max_files: int = 10, max_dirs: int = 10
-    ) -> Tuple[List[FileInfo], List[FileInfo]]:
+    ) -> AsyncIterator[ScanProgress]:
         """
         Scan a directory and return the largest files and directories.
 
@@ -99,7 +112,7 @@ class DiskScanner:
                         progress.update(task)
             except KeyboardInterrupt:
                 self.console.print(
-                    "\n[yellow]Scan interrupted. Showing partial results...[/yellow]"
+                    f"\n[{YELLOW}]Scan interrupted. Showing partial results...[/]"
                 )
 
         # Get largest files – the keys in _file_data are all the scanned items that are files.
@@ -221,9 +234,9 @@ class DiskScanner:
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
-            self.console.print(f"[green]Results saved to {output_path.absolute()}[/green]")
+            self.console.print(f"[{GREEN}]Results saved to {output_path.absolute()}[/]")
         except Exception as e:
-            self.console.print(f"[red]Failed to save results: {e}[/red]")
+            self.console.print(f"[{RED}]Failed to save results: {e}[/]")
 
     def _print_access_issues_summary(self) -> None:
         """Print a rich-formatted summary of access issues."""
@@ -236,14 +249,14 @@ class DiskScanner:
             box=None,
             padding=(0, 1),
             expand=True,
-            title="[bold yellow]Access Issues Summary[/]",
+            title=f"[bold {YELLOW}]Access Issues Summary[/]",
             title_justify="left",
-            border_style="yellow",
+            border_style=YELLOW,
         )
 
         for error_type, paths in issues_by_type.items():
             issue_table.add_row(
-                "[yellow]•[/yellow]", f"[yellow]{error_type}[/yellow] ({len(paths)} items)"
+                f"[{YELLOW}]•[/]", f"[{YELLOW}]{error_type}[/] ({len(paths)} items)"
             )
             # Show up to three examples per error type.
             for sample in sorted(paths)[:3]:
@@ -278,7 +291,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.path.is_dir():
-        Console().print(f"[red]Error:[/red] {args.path} is not a valid directory.")
+        Console().print(f"[{RED}]Error:[/] {args.path} is not a valid directory.")
         sys.exit(1)
 
     scanner = DiskScanner()
@@ -288,40 +301,40 @@ def main() -> None:
     console = scanner.console
     # Display results in tables
     file_table = Table(
-        title="[bold]Largest Files[/]",
-        border_style="cyan",
-        header_style="bold cyan",
+        title=f"[{BASE1}]Largest Files[/]",
+        border_style=CYAN,
+        header_style=f"bold {BASE1}",
         show_lines=True,
         padding=(0, 1),
         expand=True,
     )
-    file_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
-    file_table.add_column("Storage", style="yellow", no_wrap=True)
-    file_table.add_column("Path", style="bright_white")
+    file_table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
+    file_table.add_column("Storage", style=YELLOW, no_wrap=True)
+    file_table.add_column("Path", style=BASE0)
     for f in largest_files:
         file_table.add_row(
             scanner.format_size(f.size),
-            "☁️ iCloud" if f.is_icloud else "💾 Local",
+            f"[{BLUE}]☁️ iCloud[/]" if f.is_icloud else f"[{GREEN}]💾 Local[/]",
             str(f.path.relative_to(args.path)),
         )
     console.print()
     console.print(file_table)
 
     dir_table = Table(
-        title="[bold]Largest Directories[/]",
-        border_style="blue",
-        header_style="bold blue",
+        title=f"[{BASE1}]Largest Directories[/]",
+        border_style=BLUE,
+        header_style=f"bold {BASE1}",
         show_lines=True,
         padding=(0, 1),
         expand=True,
     )
-    dir_table.add_column("Size", justify="right", style="cyan", no_wrap=True)
-    dir_table.add_column("Storage", style="yellow", no_wrap=True)
-    dir_table.add_column("Path", style="bright_white")
+    dir_table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
+    dir_table.add_column("Storage", style=YELLOW, no_wrap=True)
+    dir_table.add_column("Path", style=BASE0)
     for d in largest_dirs:
         dir_table.add_row(
             scanner.format_size(d.size),
-            "☁️ iCloud" if d.is_icloud else "💾 Local",
+            f"[{BLUE}]☁️ iCloud[/]" if d.is_icloud else f"[{GREEN}]💾 Local[/]",
             str(d.path.relative_to(args.path)),
         )
     console.print()

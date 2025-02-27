@@ -1,22 +1,122 @@
 """Textual UI for reclaim with interactive file/folder management."""
 
+import asyncio
 import os
 import shutil
+import time
+import uuid
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Dict, Any
 
 from rich.text import Text
-from textual import on
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, Horizontal
 from textual.screen import Screen, ModalScreen
+from textual.widgets import ProgressBar
+from textual.worker import Worker, WorkerState
 from textual.widgets import (
     Button, DataTable, Footer, Header, Static,
     Label, Input, RadioSet, RadioButton
 )
 
-from .disk_scanner import DiskScanner, FileInfo
+from .core import DiskScanner, FileInfo, ScanOptions
+from .formatters import format_size
+from .styles import TEXTUAL_CSS
+
+
+class ProgressManager:
+    """Manages progress bar lifecycle to prevent duplicate IDs and provide smoother updates."""
+    
+    def __init__(self, app: App, container_id: str):
+        """Initialize the progress manager.
+        
+        Args:
+            app: The parent Textual app
+            container_id: ID of the container to mount progress bars in
+        """
+        self.app = app
+        self.container_id = container_id
+        self.current_progress_bar: Optional[ProgressBar] = None
+        self.progress_bar_id: Optional[str] = None
+        self.last_update_time = 0
+        self.update_interval = 0.1  # Update at most 10 times per second
+        self.last_progress_value = 0
+        self.min_progress_increment = 0.005  # Minimum 0.5% change to update
+        
+    def create_progress_bar(self) -> ProgressBar:
+        """Create a new progress bar with a unique ID.
+        
+        Returns:
+            The newly created progress bar
+        """
+        # Clean up any existing progress bar first
+        self.remove_progress_bar()
+        
+        # Generate a unique ID for the progress bar
+        unique_id = f"progress-bar-{uuid.uuid4().hex[:8]}"
+        self.progress_bar_id = unique_id
+        
+        # Create and mount the progress bar
+        progress_bar = ProgressBar(id=unique_id)
+        self.current_progress_bar = progress_bar
+        
+        try:
+            container = self.app.query_one(f"#{self.container_id}")
+            container.mount(progress_bar)
+        except Exception as e:
+            self.app.notify(f"Error mounting progress bar: {e}", severity="error")
+            return None
+            
+        return progress_bar
+        
+    def update_progress(self, progress: float) -> None:
+        """Update the progress bar with smoothing.
+        
+        Args:
+            progress: Progress value between 0 and 1
+        """
+        if not self.current_progress_bar:
+            return
+            
+        # Apply smoothing to avoid choppy updates
+        current_time = time.time()
+        time_since_update = current_time - self.last_update_time
+        progress_change = abs(progress - self.last_progress_value)
+        
+        # Only update if enough time has passed or progress change is significant
+        if (time_since_update >= self.update_interval or
+            progress_change >= self.min_progress_increment or
+            progress >= 1.0):  # Always update on completion
+            
+            try:
+                # Update without triggering a full redraw
+                self.current_progress_bar.update(progress=progress)
+                self.last_update_time = current_time
+                self.last_progress_value = progress
+            except Exception:
+                # Progress bar might have been removed
+                self.current_progress_bar = None
+                
+    def remove_progress_bar(self) -> None:
+        """Safely remove the current progress bar if it exists."""
+        if not self.current_progress_bar:
+            return
+            
+        try:
+            # Try to find the progress bar by its ID
+            if self.progress_bar_id:
+                progress_bar = self.app.query_one(f"#{self.progress_bar_id}")
+                progress_bar.remove()
+        except Exception:
+            # Progress bar might already be removed or not found
+            pass
+            
+        # Reset state
+        self.current_progress_bar = None
+        self.progress_bar_id = None
+        self.last_progress_value = 0
 
 
 class ConfirmationDialog(ModalScreen):
@@ -83,224 +183,41 @@ class SortOptions(ModalScreen):
 class ReclaimApp(App):
     """Textual app for reclaim with interactive file management."""
 
-    CSS = """
-    /* Solarized Dark color palette */
-    $base03: #002b36;
-    $base02: #073642;
-    $base01: #586e75;
-    $base00: #657b83;
-    $base0: #839496;
-    $base1: #93a1a1;
-    $base2: #eee8d5;
-    $base3: #fdf6e3;
-    $yellow: #b58900;
-    $orange: #cb4b16;
-    $red: #dc322f;
-    $magenta: #d33682;
-    $violet: #6c71c4;
-    $blue: #268bd2;
-    $cyan: #2aa198;
-    $green: #859900;
-
-    Screen {
-        background: $base03;
-        color: $base0;
-    }
-
-    #header {
-        dock: top;
-        height: 1;
-        background: $base02;
-        color: $base1;
-        text-align: center;
-    }
-
-    #footer {
-        dock: bottom;
-        height: 1;
-        background: $base02;
-        color: $base1;
-    }
-
-    #main-container {
-        width: 100%;
-        height: 100%;
-    }
-
-    #title {
-        dock: top;
-        height: 1;
-        background: $base02;
-        color: $blue;
-        text-align: center;
-    }
-
-    #path-display {
-        dock: top;
-        height: 1;
-        background: $base02;
-        color: $base01;
-        padding: 0 1;
-    }
-
-    #tabs-container {
-        dock: top;
-        height: 3;
-        background: $base03;
-        color: $base0;
-    }
-
-    .tab-button {
-        width: 50%;
-        height: 3;
-        content-align: center middle;
-        background: $base02;
-        color: $base1;
-    }
-
-    .tab-button.active {
-        background: $blue;
-        color: $base3;
-    }
-
-    .tab-button:hover {
-        background: $base01;
-    }
-
-    #files-table, #dirs-table {
-        height: 100%;
-        width: 100%;
-        background: $base03;
-        color: $base0;
-    }
-
-    DataTable {
-        border: none;
-    }
-
-    DataTable > .datatable--header {
-        background: $base02;
-        color: $base1;
-    }
-
-    DataTable > .datatable--cursor {
-        background: $base01;
-    }
-
-    #dialog-container {
-        width: 60%;
-        height: auto;
-        background: $base02;
-        border: tall $blue;
-        padding: 1 2;
-    }
-
-    #dialog-title {
-        width: 100%;
-        height: 1;
-        content-align: center middle;
-        color: $base1;
-    }
-
-    #dialog-path {
-        width: 100%;
-        height: 3;
-        content-align: center middle;
-        margin: 1 0;
-        color: $red;
-    }
-
-    #dialog-buttons {
-        width: 100%;
-        height: 3;
-        content-align: center middle;
-        margin-top: 1;
-    }
-
-    #sort-container {
-        width: 40%;
-        height: auto;
-        background: $base02;
-        border: tall $blue;
-        padding: 1 2;
-    }
-
-    #sort-title {
-        width: 100%;
-        height: 1;
-        content-align: center middle;
-        margin-bottom: 1;
-        color: $base1;
-    }
-
-    #sort-buttons {
-        width: 100%;
-        height: 3;
-        content-align: center middle;
-        margin-top: 1;
-    }
-
-    Button {
-        margin: 0 1;
-        background: $base01;
-        color: $base2;
-    }
-
-    Button:hover {
-        background: $base00;
-    }
-
-    Button.primary {
-        background: $blue;
-    }
-
-    Button.success {
-        background: $green;
-    }
-
-    Button.error {
-        background: $red;
-    }
-
-    RadioButton {
-        background: $base02;
-        color: $base1;
-    }
-
-    RadioButton.-selected {
-        background: $blue;
-        color: $base3;
-    }
-    """
+    CSS = TEXTUAL_CSS
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("f", "toggle_files", "Show Files"),
-        Binding("d", "toggle_dirs", "Show Directories"),
+        Binding("f", "focus_files", "Focus Files"),
+        Binding("d", "focus_dirs", "Focus Directories"),
+        Binding("tab", "toggle_focus", "Toggle Focus"),
         Binding("s", "sort", "Sort"),
         Binding("r", "refresh", "Refresh"),
         Binding("delete", "delete_selected", "Delete"),
         Binding("?", "help", "Help"),
     ]
-
     def __init__(
         self,
         path: Path,
-        max_files: int = 100,
-        max_dirs: int = 100,
+        options: ScanOptions,
         on_exit_callback: Optional[Callable] = None
     ):
-        """Initialize the app with the path to scan."""
+        """Initialize the app with the path to scan.
+        
+        Args:
+            path: Directory to scan
+            options: Scan configuration options
+            on_exit_callback: Optional callback to run on exit
+        """
         super().__init__()
         self.path = path.resolve()
-        self.max_files = max_files
-        self.max_dirs = max_dirs
+        self.options = options
         self.on_exit_callback = on_exit_callback
-        self.scanner = DiskScanner(None)  # We'll handle the console output
+        self.scanner = DiskScanner(options)
         self.largest_files: List[FileInfo] = []
         self.largest_dirs: List[FileInfo] = []
-        self.current_view = "files"  # or "dirs"
+        self.current_focus = "files"  # Tracks which table has focus
         self.sort_method = "sort-size"  # Default sort method
+        self.progress_manager = None  # Will be initialized after mount
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
@@ -310,124 +227,303 @@ class ReclaimApp(App):
         with Container(id="main-container"):
             yield Static(f"Path: {self.path}", id="path-display")
 
-            with Container(id="tabs-container"):
-                yield Button("Files", id="files-tab", classes="tab-button active")
-                yield Button("Directories", id="dirs-tab", classes="tab-button")
+            # Directories section
+            yield Static("[bold]Largest Directories[/bold]", id="dirs-section-header")
+            dirs_table = DataTable(id="dirs-table")
+            dirs_table.add_columns("Size", "Storage", "Path")
+            yield dirs_table
 
-            # Files table
+            # Files section
+            yield Static("[bold]Largest Files[/bold]", id="files-section-header")
             files_table = DataTable(id="files-table")
             files_table.add_columns("Size", "Storage", "Path")
             yield files_table
-
-            # Directories table (initially hidden)
-            dirs_table = DataTable(id="dirs-table")
-            dirs_table.add_columns("Size", "Storage", "Path")
-            dirs_table.display = False
-            yield dirs_table
 
         yield Footer()
 
     def on_mount(self) -> None:
         """Event handler called when the app is mounted."""
+        # Initialize progress manager
+        self.progress_manager = ProgressManager(self, "main-container")
+        
+        # Start the initial scan
         self.scan_directory()
+        
         # Set initial focus to the files table after scan completes
         self.set_timer(0.1, self.focus_active_table)
 
     def scan_directory(self) -> None:
-        """Scan the directory and update the tables."""
-        self.notify("Scanning directory... This may take a while.", timeout=5)
+        """Scan the directory and update the tables incrementally."""
+        # Reset state before starting new scan
+        self.largest_files = []
+        self.largest_dirs = []
+        
+        # Create a new progress bar using the progress manager
+        self.progress_bar = self.progress_manager.create_progress_bar()
+        
+        # Start timing
+        self.start_time = time.time()
+        
+        # Notify user that scan is starting
+        self.notify("Starting directory scan...", timeout=2)
+        
+        # Reset sort tracking
+        self._files_sorted = False
+        self._dirs_sorted = False
+        
+        # Start async scan with optimized worker function
+        self.scan_task = self.run_worker(
+            self._scan_directory_worker(),
+            name="Directory Scanner",
+            description="Scanning directory...",
+        )
+    
+    async def _scan_directory_worker(self):
+        """Worker function that processes the async generator from scan_async with optimized UI updates."""
+        # Track when we last updated the UI
+        last_ui_update = 0
+        
+        # Use a much longer update interval for better performance
+        ui_update_interval = 0.5  # Only update UI twice per second
+        
+        # Track scan progress
+        scan_start_time = time.time()
+        
+        # Buffers to collect data between UI updates
+        files_buffer = []
+        dirs_buffer = []
+        
+        async for progress in self.scanner.scan_async(self.path):
+            if not progress:
+                continue
+                
+            # Always update our data in memory
+            if progress.files:
+                files_buffer = progress.files
+            if progress.dirs:
+                dirs_buffer = progress.dirs
+                
+            # Update progress bar with smoothing via the progress manager
+            if hasattr(progress, 'progress'):
+                self.progress_manager.update_progress(progress.progress)
+            
+            current_time = time.time()
+            
+            # Use a fixed, longer interval between UI updates
+            time_to_update = current_time - last_ui_update > ui_update_interval
+            
+            # Only update UI periodically or on completion
+            if time_to_update or progress.progress >= 1.0:
+                # Update our data
+                self.largest_files = files_buffer
+                self.largest_dirs = dirs_buffer
+                
+                # Apply sort and update tables
+                self.apply_sort(self.sort_method)
+                self.update_tables()
+                last_ui_update = current_time
+                
+                # Brief yield to allow UI to update, but keep it minimal
+                await asyncio.sleep(0)
+        
+        # Return final data
+        return {
+            "files": self.largest_files,
+            "dirs": self.largest_dirs,
+            "total_size": self.scanner._total_size,
+            "file_count": self.scanner._file_count
+        }
+        
+    async def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Handle updates from the background scan task with optimized UI updates."""
+        if event.worker.name != "Directory Scanner":
+            return
+            
+        if event.worker.state == WorkerState.SUCCESS:
+            # Final update - set progress to 100% without triggering a full redraw
+            self.progress_manager.update_progress(1.0)
+            
+            # Get result data from worker
+            file_count = 0
+            if event.worker.result:
+                result = event.worker.result
+                file_count = result.get("file_count", 0)
+                
+                # Only update UI if we have new data
+                if "files" in result and result["files"]:
+                    self.largest_files = result["files"]
+                    self._files_sorted = False
+                    
+                if "dirs" in result and result["dirs"]:
+                    self.largest_dirs = result["dirs"]
+                    self._dirs_sorted = False
+            
+            # Calculate and display elapsed time
+            elapsed = time.time() - self.start_time
+            self.notify(
+                f"Scan complete in {elapsed:.1f}s. Found {file_count} files.",
+                timeout=5
+            )
+            
+            # Apply sort and update tables only once at the end
+            self.apply_sort(self.sort_method)
+            self.update_tables()
+            
+            # Remove progress bar and focus the active table
+            self.progress_manager.remove_progress_bar()
+            self.focus_active_table()
+            
+        elif event.worker.state == WorkerState.ERROR:
+            self.notify("Scan failed!", severity="error")
+            self.progress_manager.remove_progress_bar()
 
-        # Perform the scan
-        self.largest_files, self.largest_dirs = self.scanner.scan_directory(
-            self.path, self.max_files, self.max_dirs
+    # Track last table update to avoid redundant updates
+    _last_table_update = {}
+    _last_table_items = {}
+    
+    def update_tables(self) -> None:
+        """Update both data tables with current data, avoiding redundant updates."""
+        # Update files table if data has changed
+        self._update_table_if_changed("#files-table", self.largest_files)
+        
+        # Update dirs table if data has changed
+        self._update_table_if_changed("#dirs-table", self.largest_dirs)
+    
+    def _update_table_if_changed(self, table_id: str, items: List[FileInfo]) -> None:
+        """Update a table only if its data has changed significantly.
+        
+        Args:
+            table_id: CSS selector for the table
+            items: List of FileInfo objects to display
+        """
+        # Skip update if no items
+        if not items:
+            return
+            
+        # Check if data has changed significantly
+        current_items = self._last_table_items.get(table_id, [])
+        
+        # If item count is the same, check if top items are the same
+        if len(current_items) == len(items):
+            # Only check the first few items for performance
+            check_count = min(5, len(items))
+            items_changed = False
+            
+            for i in range(check_count):
+                if i >= len(current_items) or items[i].path != current_items[i].path or items[i].size != current_items[i].size:
+                    items_changed = True
+                    break
+                    
+            if not items_changed:
+                # Data hasn't changed significantly, skip update
+                return
+        
+        # Update last items
+        self._last_table_items[table_id] = items
+        
+        # Now update the table
+        self._update_table(table_id, items)
+            
+    def _update_table(self, table_id: str, items: List[FileInfo]) -> None:
+        """Helper method to update a specific table with items.
+        
+        Args:
+            table_id: CSS selector for the table
+            items: List of FileInfo objects to display
+        """
+        table = self.query_one(table_id)
+        table.clear()
+        table.can_focus = True
+        
+        # Skip update if no items
+        if not items:
+            return
+        
+        # Limit the number of items to display for better performance
+        display_items = items[:min(100, len(items))]
+        
+        # Render all items at once - Textual's DataTable has built-in virtualization
+        for item_info in display_items:
+            self._add_row_to_table(table, item_info)
+    
+    def _add_row_to_table(self, table, item_info: FileInfo) -> None:
+        """Add a single row to a table.
+        
+        Args:
+            table: The DataTable to add the row to
+            item_info: FileInfo object with data for the row
+        """
+        try:
+            rel_path = item_info.path.relative_to(self.path)
+        except ValueError:
+            rel_path = item_info.path
+
+        storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
+        storage_cell = Text(
+            storage_status,
+            style="#268bd2" if item_info.is_icloud else "#859900"
         )
 
-        # Apply current sort
-        self.apply_sort(self.sort_method)
+        table.add_row(
+            format_size(item_info.size),
+            storage_cell,
+            str(rel_path),
+            key=str(item_info.path)
+        )
 
-        # Update the tables
-        self.update_tables()
-
-        # Focus the active table after scan completes
-        self.set_timer(0.1, self.focus_active_table)
-
-        self.notify(f"Scan complete. Found {len(self.largest_files)} files and {len(self.largest_dirs)} directories.", timeout=5)
-
-    def update_tables(self) -> None:
-        """Update the data tables with current data."""
-        # Update files table
-        files_table = self.query_one("#files-table")
-        files_table.clear()
-        files_table.can_focus = True
-
-        for file_info in self.largest_files:
-            try:
-                rel_path = file_info.path.relative_to(self.path)
-            except ValueError:
-                rel_path = file_info.path
-
-            storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style="#268bd2" if file_info.is_icloud else "#859900")
-
-            files_table.add_row(
-                self.scanner.format_size(file_info.size),
-                storage_cell,
-                str(rel_path),
-                key=str(file_info.path)
-            )
-
-        # Update directories table
-        dirs_table = self.query_one("#dirs-table")
-        dirs_table.clear()
-        dirs_table.can_focus = True
-
-        for dir_info in self.largest_dirs:
-            try:
-                rel_path = dir_info.path.relative_to(self.path)
-            except ValueError:
-                rel_path = dir_info.path
-
-            storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style="#268bd2" if dir_info.is_icloud else "#859900")
-
-            dirs_table.add_row(
-                self.scanner.format_size(dir_info.size),
-                storage_cell,
-                str(rel_path),
-                key=str(dir_info.path)
-            )
-
+    # Track current sort state to avoid redundant sorts
+    _current_sort_method = "sort-size"
+    _files_sorted = False
+    _dirs_sorted = False
+    
     def apply_sort(self, sort_method: str) -> None:
-        """Apply the selected sort method to the data."""
-        if sort_method == "sort-size":
-            # Already sorted by size from the scanner
-            pass
-        elif sort_method == "sort-name":
-            self.largest_files.sort(key=lambda x: x.path.name.lower())
-            self.largest_dirs.sort(key=lambda x: x.path.name.lower())
-        elif sort_method == "sort-path":
-            self.largest_files.sort(key=lambda x: str(x.path).lower())
-            self.largest_dirs.sort(key=lambda x: str(x.path).lower())
+        """Apply the selected sort method to the data, avoiding redundant sorts."""
+        # Skip if no data to sort
+        if not self.largest_files and not self.largest_dirs:
+            return
+            
+        # Skip if sort method hasn't changed and data is already sorted
+        if sort_method == self._current_sort_method and self._files_sorted and self._dirs_sorted:
+            return
+            
+        # Define sort keys based on method
+        sort_keys = {
+            "sort-size": lambda x: -x.size,  # Negative for descending order
+            "sort-name": lambda x: x.path.name.lower(),
+            "sort-path": lambda x: str(x.path).lower()
+        }
+        
+        # Get the appropriate sort key function
+        key_func = sort_keys.get(sort_method)
+        if not key_func:
+            return  # Invalid sort method
+            
+        # Only sort if we have data and sort method has changed
+        if self.largest_files:
+            self.largest_files.sort(key=key_func)
+            self._files_sorted = True
+            
+        if self.largest_dirs:
+            self.largest_dirs.sort(key=key_func)
+            self._dirs_sorted = True
+            
+        # Update current sort method
+        self._current_sort_method = sort_method
 
-    def action_toggle_files(self) -> None:
-        """Switch to the files view."""
-        if self.current_view != "files":
-            self.current_view = "files"
-            self.query_one("#files-table").display = True
-            self.query_one("#dirs-table").display = False
-            self.query_one("#files-tab").add_class("active")
-            self.query_one("#dirs-tab").remove_class("active")
-            self.focus_active_table()
+    def action_focus_files(self) -> None:
+        """Focus the files table."""
+        self.current_focus = "files"
+        self.focus_active_table()
 
-    def action_toggle_dirs(self) -> None:
-        """Switch to the directories view."""
-        if self.current_view != "dirs":
-            self.current_view = "dirs"
-            self.query_one("#files-table").display = False
-            self.query_one("#dirs-table").display = True
-            self.query_one("#files-tab").remove_class("active")
-            self.query_one("#dirs-tab").add_class("active")
-            self.focus_active_table()
+    def action_focus_dirs(self) -> None:
+        """Focus the directories table."""
+        self.current_focus = "dirs"
+        self.focus_active_table()
+        
+    def action_toggle_focus(self) -> None:
+        """Toggle focus between files and directories tables."""
+        self.current_focus = "dirs" if self.current_focus == "files" else "files"
+        self.focus_active_table()
 
     def action_sort(self) -> None:
         """Show the sort options dialog."""
@@ -446,8 +542,8 @@ class ReclaimApp(App):
 
     def action_delete_selected(self) -> None:
         """Delete the selected file or directory."""
-        # Get the current table based on the view
-        table = self.query_one("#files-table" if self.current_view == "files" else "#dirs-table")
+        # Get the current table based on the focus
+        table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
 
         # Check if a row is selected
         if table.cursor_coordinate is not None:
@@ -458,9 +554,9 @@ class ReclaimApp(App):
 
                 # In the current version of Textual, we need to access the key differently
                 # The key is stored when we add the row, so we need to look it up in our data
-                if self.current_view == "files" and row < len(self.largest_files):
+                if self.current_focus == "files" and row < len(self.largest_files):
                     path = self.largest_files[row].path
-                elif self.current_view == "dirs" and row < len(self.largest_dirs):
+                elif self.current_focus == "dirs" and row < len(self.largest_dirs):
                     path = self.largest_dirs[row].path
                 else:
                     self.notify("Could not determine the path for this item", timeout=5)
@@ -490,9 +586,10 @@ class ReclaimApp(App):
         [#93a1a1]Reclaim Help[/]
 
         [#268bd2]Navigation:[/]
-        - Arrow keys: Navigate tables
-        - F: Switch to Files view
-        - D: Switch to Directories view
+        - Arrow keys: Navigate within a table
+        - F: Focus Files table
+        - D: Focus Directories table
+        - Tab: Move between tables
 
         [#268bd2]Actions:[/]
         - Delete: Delete selected item
@@ -506,33 +603,28 @@ class ReclaimApp(App):
         """
         self.notify(help_text, timeout=10)
 
-    @on(Button.Pressed, "#files-tab")
-    def switch_to_files(self) -> None:
-        """Handle files tab button press."""
-        self.action_toggle_files()
-
-    @on(Button.Pressed, "#dirs-tab")
-    def switch_to_dirs(self) -> None:
-        """Handle directories tab button press."""
-        self.action_toggle_dirs()
+    # Tab button handlers removed as we now have a unified view
 
     def on_data_table_row_selected(self, event) -> None:
         """Handle row selection in data tables."""
         table_id = event.data_table.id
         row = event.cursor_coordinate.row
 
+        # Update current_focus based on which table was selected
         if table_id == "files-table":
             items = self.largest_files
+            self.current_focus = "files"
         else:
             items = self.largest_dirs
+            self.current_focus = "dirs"
 
         if 0 <= row < len(items):
             path = items[row].path
             self.notify(f"Selected: {path}", timeout=3)
 
     def focus_active_table(self) -> None:
-        """Focus the currently active table."""
-        table_id = "#files-table" if self.current_view == "files" else "#dirs-table"
+        """Focus the currently active table based on current_focus."""
+        table_id = "#files-table" if self.current_focus == "files" else "#dirs-table"
         table = self.query_one(table_id)
 
         # Only set focus if the table has rows
@@ -548,7 +640,28 @@ class ReclaimApp(App):
             self.on_exit_callback()
 
 
-def run_textual_ui(path: Path, max_files: int = 100, max_dirs: int = 100) -> None:
-    """Run the Textual UI application."""
-    app = ReclaimApp(path, max_files, max_dirs)
+def run_textual_ui(
+    path: Path,
+    max_files: int = 100,
+    max_dirs: int = 100,
+    skip_dirs: list[str] = None
+) -> None:
+    """Run the Textual UI application.
+    
+    Args:
+        path: Directory to scan
+        max_files: Maximum number of files to show
+        max_dirs: Maximum number of directories to show
+        skip_dirs: List of directory names to skip
+    """
+    if skip_dirs is None:
+        skip_dirs = [".Trash", "System Volume Information"]
+        
+    options = ScanOptions(
+        max_files=max_files,
+        max_dirs=max_dirs,
+        skip_dirs=skip_dirs
+    )
+    
+    app = ReclaimApp(path, options)
     app.run()
