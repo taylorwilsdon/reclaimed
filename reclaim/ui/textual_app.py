@@ -21,8 +21,8 @@ from textual.widgets import (
     Label, Input, RadioSet, RadioButton
 )
 
-from .core import DiskScanner, FileInfo, ScanOptions
-from .formatters import format_size
+from ..core import DiskScanner, FileInfo, ScanOptions
+from ..utils.formatters import format_size
 from .styles import TEXTUAL_CSS
 
 
@@ -225,7 +225,12 @@ class ReclaimApp(App):
         yield Static("[bold]Reclaim[/bold]", id="title")
 
         with Container(id="main-container"):
-            yield Static(f"Path: {self.path}", id="path-display")
+            # Status bar with scan info
+            with Horizontal(id="status-bar"):
+                yield Static("Path:", id="status-label")
+                yield Static(f"{self.path}", id="path-display")
+                yield Static("", id="scan-timer")
+                yield Static("", id="scan-count")
 
             # Directories section
             yield Static("[bold]Largest Directories[/bold]", id="dirs-section-header")
@@ -283,8 +288,8 @@ class ReclaimApp(App):
         # Track when we last updated the UI
         last_ui_update = 0
         
-        # Use a much longer update interval for better performance
-        ui_update_interval = 0.5  # Only update UI twice per second
+        # Base update interval - will be adjusted dynamically based on file count
+        base_ui_update_interval = 0.5
         
         # Track scan progress
         scan_start_time = time.time()
@@ -292,6 +297,17 @@ class ReclaimApp(App):
         # Buffers to collect data between UI updates
         files_buffer = []
         dirs_buffer = []
+        
+        # Track the last file count to detect large jumps
+        last_file_count = 0
+        
+        # Get references to status elements
+        timer_display = self.query_one("#scan-timer")
+        count_display = self.query_one("#scan-count")
+        
+        # Update timer more frequently than tables for better feedback
+        timer_update_interval = 0.25  # Update timer 4 times per second
+        last_timer_update = 0
         
         async for progress in self.scanner.scan_async(self.path):
             if not progress:
@@ -308,12 +324,40 @@ class ReclaimApp(App):
                 self.progress_manager.update_progress(progress.progress)
             
             current_time = time.time()
+            elapsed_time = current_time - scan_start_time
             
-            # Use a fixed, longer interval between UI updates
+            # Update timer and file count more frequently than tables
+            if current_time - last_timer_update >= timer_update_interval:
+                # Format elapsed time as MM:SS
+                minutes = int(elapsed_time // 60)
+                seconds = int(elapsed_time % 60)
+                timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
+                
+                # Update file count
+                count_display.update(f"Files: {progress.scanned:,}")
+                
+                last_timer_update = current_time
+            
+            # Dynamically adjust update interval based on files scanned
+            ui_update_interval = base_ui_update_interval
+            if progress.scanned > 100000:
+                ui_update_interval = 5.0  # Very infrequent updates for huge directories
+            elif progress.scanned > 50000:
+                ui_update_interval = 3.0  # Very infrequent updates for very large directories
+            elif progress.scanned > 10000:
+                ui_update_interval = 2.0  # Less frequent updates for large directories
+            elif progress.scanned > 5000:
+                ui_update_interval = 1.0  # Moderate updates for medium directories
+            
+            # Force an update if we've scanned a lot more files since the last update
+            # This ensures we show progress even during long update intervals
+            force_update = progress.scanned - last_file_count > 5000
+            
+            # Use adaptive interval between UI updates
             time_to_update = current_time - last_ui_update > ui_update_interval
             
-            # Only update UI periodically or on completion
-            if time_to_update or progress.progress >= 1.0:
+            # Only update UI periodically, on completion, or when forced
+            if time_to_update or progress.progress >= 1.0 or force_update:
                 # Update our data
                 self.largest_files = files_buffer
                 self.largest_dirs = dirs_buffer
@@ -322,6 +366,7 @@ class ReclaimApp(App):
                 self.apply_sort(self.sort_method)
                 self.update_tables()
                 last_ui_update = current_time
+                last_file_count = progress.scanned
                 
                 # Brief yield to allow UI to update, but keep it minimal
                 await asyncio.sleep(0)
@@ -360,8 +405,19 @@ class ReclaimApp(App):
             
             # Calculate and display elapsed time
             elapsed = time.time() - self.start_time
+            
+            # Format final elapsed time
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            
+            # Update status displays with final values
+            timer_display = self.query_one("#scan-timer")
+            count_display = self.query_one("#scan-count")
+            timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
+            count_display.update(f"Files: {file_count:,}")
+            
             self.notify(
-                f"Scan complete in {elapsed:.1f}s. Found {file_count} files.",
+                f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.",
                 timeout=5
             )
             

@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
     "click>=8.0.0",
     "rich>=10.0.0",
+    "textual>=0.10.0",
 ]
 
 [project.urls]
@@ -39,13 +40,13 @@ Repository = "https://github.com/taylorwilsdon/reclaim.git"
 Issues = "https://github.com/taylorwilsdon/reclaim/issues"
 
 [project.scripts]
-reclaim = "disk_scanner.cli:main"
+reclaim = "reclaim.cli:main"
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["disk_scanner"]
+packages = ["reclaim"]
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -58,11 +59,11 @@ dependencies = [
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-test-cov = "pytest --cov=disk_scanner --cov-report=term-missing tests"
+test-cov = "pytest --cov=reclaim --cov-report=term-missing tests"
 lint = [
     "black .",
     "ruff check .",
-    "mypy disk_scanner tests",
+    "mypy reclaim tests",
 ]
 
 [tool.pytest.ini_options]

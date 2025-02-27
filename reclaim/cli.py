@@ -1,4 +1,4 @@
-"""Command-line interface for disk scanner."""
+"""Command-line interface for reclaim."""
 
 import logging
 import sys
@@ -15,9 +15,9 @@ from .core.errors import (
 )
 from .core.scanner import DiskScanner
 from .core.types import ScanOptions
-from .formatters import format_size
+from .utils.formatters import format_size
 from .ui.formatters import TableFormatter
-from .textual_ui import run_textual_ui
+from .ui.textual_app import run_textual_ui
 
 
 # Configure logging
@@ -93,13 +93,21 @@ def handle_scan_error(error: Exception, console: Console) -> int:
     default=True,
     help="Use interactive TUI mode (default) or simple text output"
 )
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to save the JSON scan results"
+)
 def main(
     path: Path,
     max_files: int,
     max_dirs: int,
     skip_dirs: tuple[str, ...],
     debug: bool,
-    interactive: bool
+    interactive: bool,
+    output: Path
 ) -> None:
     """Analyze disk space usage and find large files/directories.
     
@@ -113,7 +121,7 @@ def main(
     try:
         if interactive:
             # Run interactive TUI mode
-            run_textual_ui(path, max_files, max_dirs)
+            run_textual_ui(path, max_files, max_dirs, list(skip_dirs))
             return 0
         else:
             # Run non-interactive mode
@@ -131,7 +139,7 @@ def main(
                 skip_dirs=skip_list
             )
             
-            scanner = DiskScanner(options)
+            scanner = DiskScanner(options, console)
 
             # Perform scan
             result = scanner.scan(path)
@@ -149,6 +157,10 @@ def main(
                 f"\nScanned [cyan]{result.files_scanned:,}[/] files, "
                 f"total size: [cyan]{format_size(result.total_size)}[/]"
             )
+            
+            # Save results if output path is specified
+            if output:
+                scanner.save_results(output, result.files, result.directories, path)
 
             return 0
 

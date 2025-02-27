@@ -13,7 +13,7 @@ from .core import (
     PermissionError,
     ScanInterruptedError,
 )
-from .formatters import format_size, parse_size
+from .utils.formatters import format_size, parse_size
 from .io import FileSystemOperations
 
 __all__ = [
