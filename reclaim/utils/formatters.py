@@ -19,11 +19,11 @@ class SizeFormatter:
     @classmethod
     def format_size(cls, size: int, precision: int = 1) -> str:
         """Convert a size in bytes to a human-readable string.
-        
+
         Args:
             size: Size in bytes
             precision: Number of decimal places to show
-            
+
         Returns:
             Human-readable size string (e.g., "1.5 GB")
         """
@@ -46,13 +46,13 @@ class SizeFormatter:
     @classmethod
     def parse_size(cls, size_str: str) -> int:
         """Convert a human-readable size string back to bytes.
-        
+
         Args:
             size_str: Size string (e.g., "1.5 GB")
-            
+
         Returns:
             Size in bytes
-            
+
         Raises:
             ValueError: If size string is invalid
         """
@@ -80,11 +80,11 @@ class SizeFormatter:
 
 def format_size(size: int, precision: int = 1) -> str:
     """Convenience function for formatting sizes.
-    
+
     Args:
         size: Size in bytes
         precision: Number of decimal places
-        
+
     Returns:
         Human-readable size string
     """
@@ -93,10 +93,10 @@ def format_size(size: int, precision: int = 1) -> str:
 
 def parse_size(size_str: str) -> int:
     """Convenience function for parsing size strings.
-    
+
     Args:
         size_str: Size string to parse
-        
+
     Returns:
         Size in bytes
     """

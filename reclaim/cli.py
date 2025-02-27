@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 def handle_scan_error(error: Exception, console: Console) -> int:
     """Handle scanning errors with appropriate messages.
-    
+
     Args:
         error: Exception that occurred
         console: Rich console for output
-        
+
     Returns:
         Exit code to use
     """
@@ -110,7 +110,7 @@ def main(
     output: Path
 ) -> None:
     """Analyze disk space usage and find large files/directories.
-    
+
     Scans the specified PATH (defaults to current directory) and displays the
     largest files and directories found. The scan can be interrupted at any
     time with Ctrl+C to show partial results.
@@ -138,7 +138,7 @@ def main(
                 max_dirs=max_dirs,
                 skip_dirs=skip_list
             )
-            
+
             scanner = DiskScanner(options, console)
 
             # Perform scan
@@ -157,7 +157,7 @@ def main(
                 f"\nScanned [cyan]{result.files_scanned:,}[/] files, "
                 f"total size: [cyan]{format_size(result.total_size)}[/]"
             )
-            
+
             # Save results if output path is specified
             if output:
                 scanner.save_results(output, result.files, result.directories, path)

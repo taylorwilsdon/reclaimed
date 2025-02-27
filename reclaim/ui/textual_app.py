@@ -28,10 +28,10 @@ from .styles import TEXTUAL_CSS
 
 class ProgressManager:
     """Manages progress bar lifecycle to prevent duplicate IDs and provide smoother updates."""
-    
+
     def __init__(self, app: App, container_id: str):
         """Initialize the progress manager.
-        
+
         Args:
             app: The parent Textual app
             container_id: ID of the container to mount progress bars in
@@ -44,52 +44,52 @@ class ProgressManager:
         self.update_interval = 0.1  # Update at most 10 times per second
         self.last_progress_value = 0
         self.min_progress_increment = 0.005  # Minimum 0.5% change to update
-        
+
     def create_progress_bar(self) -> ProgressBar:
         """Create a new progress bar with a unique ID.
-        
+
         Returns:
             The newly created progress bar
         """
         # Clean up any existing progress bar first
         self.remove_progress_bar()
-        
+
         # Generate a unique ID for the progress bar
         unique_id = f"progress-bar-{uuid.uuid4().hex[:8]}"
         self.progress_bar_id = unique_id
-        
+
         # Create and mount the progress bar
         progress_bar = ProgressBar(id=unique_id)
         self.current_progress_bar = progress_bar
-        
+
         try:
             container = self.app.query_one(f"#{self.container_id}")
             container.mount(progress_bar)
         except Exception as e:
             self.app.notify(f"Error mounting progress bar: {e}", severity="error")
             return None
-            
+
         return progress_bar
-        
+
     def update_progress(self, progress: float) -> None:
         """Update the progress bar with smoothing.
-        
+
         Args:
             progress: Progress value between 0 and 1
         """
         if not self.current_progress_bar:
             return
-            
+
         # Apply smoothing to avoid choppy updates
         current_time = time.time()
         time_since_update = current_time - self.last_update_time
         progress_change = abs(progress - self.last_progress_value)
-        
+
         # Only update if enough time has passed or progress change is significant
         if (time_since_update >= self.update_interval or
             progress_change >= self.min_progress_increment or
             progress >= 1.0):  # Always update on completion
-            
+
             try:
                 # Update without triggering a full redraw
                 self.current_progress_bar.update(progress=progress)
@@ -98,12 +98,12 @@ class ProgressManager:
             except Exception:
                 # Progress bar might have been removed
                 self.current_progress_bar = None
-                
+
     def remove_progress_bar(self) -> None:
         """Safely remove the current progress bar if it exists."""
         if not self.current_progress_bar:
             return
-            
+
         try:
             # Try to find the progress bar by its ID
             if self.progress_bar_id:
@@ -112,7 +112,7 @@ class ProgressManager:
         except Exception:
             # Progress bar might already be removed or not found
             pass
-            
+
         # Reset state
         self.current_progress_bar = None
         self.progress_bar_id = None
@@ -202,7 +202,7 @@ class ReclaimApp(App):
         on_exit_callback: Optional[Callable] = None
     ):
         """Initialize the app with the path to scan.
-        
+
         Args:
             path: Directory to scan
             options: Scan configuration options
@@ -250,10 +250,10 @@ class ReclaimApp(App):
         """Event handler called when the app is mounted."""
         # Initialize progress manager
         self.progress_manager = ProgressManager(self, "main-container")
-        
+
         # Start the initial scan
         self.scan_directory()
-        
+
         # Set initial focus to the files table after scan completes
         self.set_timer(0.1, self.focus_active_table)
 
@@ -262,82 +262,82 @@ class ReclaimApp(App):
         # Reset state before starting new scan
         self.largest_files = []
         self.largest_dirs = []
-        
+
         # Create a new progress bar using the progress manager
         self.progress_bar = self.progress_manager.create_progress_bar()
-        
+
         # Start timing
         self.start_time = time.time()
-        
+
         # Notify user that scan is starting
         self.notify("Starting directory scan...", timeout=2)
-        
+
         # Reset sort tracking
         self._files_sorted = False
         self._dirs_sorted = False
-        
+
         # Start async scan with optimized worker function
         self.scan_task = self.run_worker(
             self._scan_directory_worker(),
             name="Directory Scanner",
             description="Scanning directory...",
         )
-    
+
     async def _scan_directory_worker(self):
         """Worker function that processes the async generator from scan_async with optimized UI updates."""
         # Track when we last updated the UI
         last_ui_update = 0
-        
+
         # Base update interval - will be adjusted dynamically based on file count
         base_ui_update_interval = 0.5
-        
+
         # Track scan progress
         scan_start_time = time.time()
-        
+
         # Buffers to collect data between UI updates
         files_buffer = []
         dirs_buffer = []
-        
+
         # Track the last file count to detect large jumps
         last_file_count = 0
-        
+
         # Get references to status elements
         timer_display = self.query_one("#scan-timer")
         count_display = self.query_one("#scan-count")
-        
+
         # Update timer more frequently than tables for better feedback
         timer_update_interval = 0.25  # Update timer 4 times per second
         last_timer_update = 0
-        
+
         async for progress in self.scanner.scan_async(self.path):
             if not progress:
                 continue
-                
+
             # Always update our data in memory
             if progress.files:
                 files_buffer = progress.files
             if progress.dirs:
                 dirs_buffer = progress.dirs
-                
+
             # Update progress bar with smoothing via the progress manager
             if hasattr(progress, 'progress'):
                 self.progress_manager.update_progress(progress.progress)
-            
+
             current_time = time.time()
             elapsed_time = current_time - scan_start_time
-            
+
             # Update timer and file count more frequently than tables
             if current_time - last_timer_update >= timer_update_interval:
                 # Format elapsed time as MM:SS
                 minutes = int(elapsed_time // 60)
                 seconds = int(elapsed_time % 60)
                 timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
-                
+
                 # Update file count
                 count_display.update(f"Files: {progress.scanned:,}")
-                
+
                 last_timer_update = current_time
-            
+
             # Dynamically adjust update interval based on files scanned
             ui_update_interval = base_ui_update_interval
             if progress.scanned > 100000:
@@ -348,29 +348,29 @@ class ReclaimApp(App):
                 ui_update_interval = 2.0  # Less frequent updates for large directories
             elif progress.scanned > 5000:
                 ui_update_interval = 1.0  # Moderate updates for medium directories
-            
+
             # Force an update if we've scanned a lot more files since the last update
             # This ensures we show progress even during long update intervals
             force_update = progress.scanned - last_file_count > 5000
-            
+
             # Use adaptive interval between UI updates
             time_to_update = current_time - last_ui_update > ui_update_interval
-            
+
             # Only update UI periodically, on completion, or when forced
             if time_to_update or progress.progress >= 1.0 or force_update:
                 # Update our data
                 self.largest_files = files_buffer
                 self.largest_dirs = dirs_buffer
-                
+
                 # Apply sort and update tables
                 self.apply_sort(self.sort_method)
                 self.update_tables()
                 last_ui_update = current_time
                 last_file_count = progress.scanned
-                
+
                 # Brief yield to allow UI to update, but keep it minimal
                 await asyncio.sleep(0)
-        
+
         # Return final data
         return {
             "files": self.largest_files,
@@ -378,57 +378,57 @@ class ReclaimApp(App):
             "total_size": self.scanner._total_size,
             "file_count": self.scanner._file_count
         }
-        
+
     async def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Handle updates from the background scan task with optimized UI updates."""
         if event.worker.name != "Directory Scanner":
             return
-            
+
         if event.worker.state == WorkerState.SUCCESS:
             # Final update - set progress to 100% without triggering a full redraw
             self.progress_manager.update_progress(1.0)
-            
+
             # Get result data from worker
             file_count = 0
             if event.worker.result:
                 result = event.worker.result
                 file_count = result.get("file_count", 0)
-                
+
                 # Only update UI if we have new data
                 if "files" in result and result["files"]:
                     self.largest_files = result["files"]
                     self._files_sorted = False
-                    
+
                 if "dirs" in result and result["dirs"]:
                     self.largest_dirs = result["dirs"]
                     self._dirs_sorted = False
-            
+
             # Calculate and display elapsed time
             elapsed = time.time() - self.start_time
-            
+
             # Format final elapsed time
             minutes = int(elapsed // 60)
             seconds = int(elapsed % 60)
-            
+
             # Update status displays with final values
             timer_display = self.query_one("#scan-timer")
             count_display = self.query_one("#scan-count")
             timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
             count_display.update(f"Files: {file_count:,}")
-            
+
             self.notify(
                 f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.",
                 timeout=5
             )
-            
+
             # Apply sort and update tables only once at the end
             self.apply_sort(self.sort_method)
             self.update_tables()
-            
+
             # Remove progress bar and focus the active table
             self.progress_manager.remove_progress_bar()
             self.focus_active_table()
-            
+
         elif event.worker.state == WorkerState.ERROR:
             self.notify("Scan failed!", severity="error")
             self.progress_manager.remove_progress_bar()
@@ -436,18 +436,18 @@ class ReclaimApp(App):
     # Track last table update to avoid redundant updates
     _last_table_update = {}
     _last_table_items = {}
-    
+
     def update_tables(self) -> None:
         """Update both data tables with current data, avoiding redundant updates."""
         # Update files table if data has changed
         self._update_table_if_changed("#files-table", self.largest_files)
-        
+
         # Update dirs table if data has changed
         self._update_table_if_changed("#dirs-table", self.largest_dirs)
-    
+
     def _update_table_if_changed(self, table_id: str, items: List[FileInfo]) -> None:
         """Update a table only if its data has changed significantly.
-        
+
         Args:
             table_id: CSS selector for the table
             items: List of FileInfo objects to display
@@ -455,34 +455,34 @@ class ReclaimApp(App):
         # Skip update if no items
         if not items:
             return
-            
+
         # Check if data has changed significantly
         current_items = self._last_table_items.get(table_id, [])
-        
+
         # If item count is the same, check if top items are the same
         if len(current_items) == len(items):
             # Only check the first few items for performance
             check_count = min(5, len(items))
             items_changed = False
-            
+
             for i in range(check_count):
                 if i >= len(current_items) or items[i].path != current_items[i].path or items[i].size != current_items[i].size:
                     items_changed = True
                     break
-                    
+
             if not items_changed:
                 # Data hasn't changed significantly, skip update
                 return
-        
+
         # Update last items
         self._last_table_items[table_id] = items
-        
+
         # Now update the table
         self._update_table(table_id, items)
-            
+
     def _update_table(self, table_id: str, items: List[FileInfo]) -> None:
         """Helper method to update a specific table with items.
-        
+
         Args:
             table_id: CSS selector for the table
             items: List of FileInfo objects to display
@@ -490,21 +490,21 @@ class ReclaimApp(App):
         table = self.query_one(table_id)
         table.clear()
         table.can_focus = True
-        
+
         # Skip update if no items
         if not items:
             return
-        
+
         # Limit the number of items to display for better performance
         display_items = items[:min(100, len(items))]
-        
+
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
             self._add_row_to_table(table, item_info)
-    
+
     def _add_row_to_table(self, table, item_info: FileInfo) -> None:
         """Add a single row to a table.
-        
+
         Args:
             table: The DataTable to add the row to
             item_info: FileInfo object with data for the row
@@ -531,38 +531,38 @@ class ReclaimApp(App):
     _current_sort_method = "sort-size"
     _files_sorted = False
     _dirs_sorted = False
-    
+
     def apply_sort(self, sort_method: str) -> None:
         """Apply the selected sort method to the data, avoiding redundant sorts."""
         # Skip if no data to sort
         if not self.largest_files and not self.largest_dirs:
             return
-            
+
         # Skip if sort method hasn't changed and data is already sorted
         if sort_method == self._current_sort_method and self._files_sorted and self._dirs_sorted:
             return
-            
+
         # Define sort keys based on method
         sort_keys = {
             "sort-size": lambda x: -x.size,  # Negative for descending order
             "sort-name": lambda x: x.path.name.lower(),
             "sort-path": lambda x: str(x.path).lower()
         }
-        
+
         # Get the appropriate sort key function
         key_func = sort_keys.get(sort_method)
         if not key_func:
             return  # Invalid sort method
-            
+
         # Only sort if we have data and sort method has changed
         if self.largest_files:
             self.largest_files.sort(key=key_func)
             self._files_sorted = True
-            
+
         if self.largest_dirs:
             self.largest_dirs.sort(key=key_func)
             self._dirs_sorted = True
-            
+
         # Update current sort method
         self._current_sort_method = sort_method
 
@@ -575,7 +575,7 @@ class ReclaimApp(App):
         """Focus the directories table."""
         self.current_focus = "dirs"
         self.focus_active_table()
-        
+
     def action_toggle_focus(self) -> None:
         """Toggle focus between files and directories tables."""
         self.current_focus = "dirs" if self.current_focus == "files" else "files"
@@ -703,7 +703,7 @@ def run_textual_ui(
     skip_dirs: list[str] = None
 ) -> None:
     """Run the Textual UI application.
-    
+
     Args:
         path: Directory to scan
         max_files: Maximum number of files to show
@@ -712,12 +712,12 @@ def run_textual_ui(
     """
     if skip_dirs is None:
         skip_dirs = [".Trash", "System Volume Information"]
-        
+
     options = ScanOptions(
         max_files=max_files,
         max_dirs=max_dirs,
         skip_dirs=skip_dirs
     )
-    
+
     app = ReclaimApp(path, options)
     app.run()

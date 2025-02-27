@@ -34,7 +34,7 @@ class DiskScanner:
 
     def __init__(self, options: Optional[ScanOptions] = None, console: Optional[Console] = None):
         """Initialize the scanner.
-        
+
         Args:
             options: Scanning configuration options
             console: Optional Rich console for output
@@ -49,13 +49,13 @@ class DiskScanner:
 
     async def scan_async(self, root_path: Path) -> AsyncIterator[ScanProgress]:
         """Scan a directory asynchronously, yielding progress updates.
-        
+
         Args:
             root_path: Directory to scan
-            
+
         Yields:
             ScanProgress updates during scanning
-            
+
         Raises:
             InvalidPathError: If root_path is not a directory
             ScanInterruptedError: If scanning is interrupted
@@ -77,7 +77,7 @@ class DiskScanner:
             # Process files in chunks for smoother progress updates
             chunk_size = 250  # Increased chunk size for better performance
             paths_chunk: List[Path] = []
-            
+
             # Pre-populate cache with any existing entries for better performance
             cached_dirs = self._cache.get_all_cached_dirs()
 
@@ -96,26 +96,26 @@ class DiskScanner:
                             "Mobile Documents" in str(path)
                         )
                         file_info = FileInfo(path, size, is_icloud)
-                        
+
                         # Update directory sizes incrementally
                         self._update_dir_sizes(path, size, is_icloud)
-                        
+
                         # Insert file in sorted position if it's large enough
                         if not largest_files or len(largest_files) < self.options.max_files or size > largest_files[-1].size:
                             self._insert_sorted(largest_files, file_info, self.options.max_files)
                             # No need to manually trim the list as _insert_sorted now handles this
-                        
+
                         self._total_size += size
                         self._file_count += 1
-                        
+
                         # Add to chunk for batch processing
                         paths_chunk.append(path)
                         if len(paths_chunk) >= chunk_size:
                             paths_chunk.clear()
-                            
+
                             # Check if it's time to calculate directory sizes
                             current_time = time.time()
-                            
+
                             # Dynamically adjust directory calculation interval based on file count
                             if self._file_count > 50000:
                                 dir_calc_interval = 5.0  # Very infrequent for huge directories
@@ -125,17 +125,17 @@ class DiskScanner:
                                 dir_calc_interval = 2.0  # Moderate for medium directories
                             else:
                                 dir_calc_interval = 1.0  # Frequent for small directories
-                                
+
                             if current_time - last_dir_calc_time >= dir_calc_interval:
                                 # Get largest directories
                                 largest_dirs = self._get_largest_dirs(root_path)
                                 last_dir_calc_time = current_time
-                                
+
                                 # Calculate a rough progress estimate based on time elapsed
                                 # This is not accurate for total completion but provides visual feedback
                                 elapsed_time = time.time() - last_dir_calc_time
                                 progress_estimate = min(0.95, self._file_count / (self._file_count + 1000))
-                                
+
                                 # Yield progress
                                 yield ScanProgress(
                                     progress=progress_estimate,  # Use our estimate for visual feedback
@@ -144,7 +144,7 @@ class DiskScanner:
                                     scanned=self._file_count,
                                     total_size=self._total_size
                                 )
-                                
+
                                 # Allow other tasks to run
                                 await asyncio.sleep(0)
                     except (PermissionError, OSError) as e:
@@ -167,13 +167,13 @@ class DiskScanner:
 
     def scan(self, root_path: Path) -> ScanResult:
         """Synchronous version of scan_async.
-        
+
         Args:
             root_path: Directory to scan
-            
+
         Returns:
             Complete scan results
-            
+
         Raises:
             InvalidPathError: If root_path is not a directory
             ScanInterruptedError: If scanning is interrupted
@@ -190,7 +190,7 @@ class DiskScanner:
 
             # Collect all files first
             files: List[FileInfo] = []
-            
+
             for path, is_file, size in self._walk_directory(root_path):
                 if is_file:
                     try:
@@ -201,10 +201,10 @@ class DiskScanner:
                             "Mobile Documents" in str(path)
                         )
                         file_info = FileInfo(path, size, is_icloud)
-                        
+
                         # Update directory sizes incrementally
                         self._update_dir_sizes(path, size, is_icloud)
-                        
+
                         # Add to files list
                         files.append(file_info)
                         self._total_size += size
@@ -214,7 +214,7 @@ class DiskScanner:
 
             # Sort files by size
             files.sort(key=lambda x: x.size, reverse=True)
-            
+
             # Get largest directories
             dirs = self._get_largest_dirs(root_path)
 
@@ -231,10 +231,10 @@ class DiskScanner:
 
     async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int]]:
         """Asynchronously walk directory tree with adaptive traversal.
-        
+
         Args:
             path: Directory to walk
-            
+
         Yields:
             Tuple of (path, is_file, size) for each path encountered
         """
@@ -243,20 +243,20 @@ class DiskScanner:
             dirs_to_process = [path]
             processed_count = 0
             is_small_directory = True  # Assume small directory initially
-            
+
             while dirs_to_process:
                 current_dir = dirs_to_process.pop(0)
-                
+
                 try:
                     # Use os.scandir directly for better performance
                     entries = list(os.scandir(current_dir))
-                    
+
                     # First collect subdirectories to process
                     for entry in entries:
                         try:
                             if entry.is_symlink():
                                 continue
-                                
+
                             if entry.is_dir():
                                 if entry.name not in self.options.skip_dirs:
                                     dirs_to_process.append(Path(entry.path))
@@ -267,11 +267,11 @@ class DiskScanner:
                                     size = entry.stat().st_size
                                     yield Path(entry.path), True, size
                                     processed_count += 1
-                                    
+
                                     # After processing 500 files, we know it's not a small directory
                                     if processed_count == 500 and is_small_directory:
                                         is_small_directory = False
-                                    
+
                                     # For small directories, don't yield to avoid overhead
                                     # For larger directories, yield occasionally to keep UI responsive
                                     if not is_small_directory and processed_count % 500 == 0:
@@ -280,25 +280,25 @@ class DiskScanner:
                                     self._handle_access_error(Path(entry.path), e)
                         except (OSError, AttributeError) as e:
                             self._handle_access_error(Path(entry.path), e)
-                                
+
                 except (AccessError, OSError) as e:
                     self._handle_access_error(current_dir, e)
-                    
+
                 # Yield the directory itself after processing its contents
                 # Use 0 size for directories as we calculate their size separately
                 yield current_dir, False, 0
-                
+
                 # For small directories, don't yield between directories to complete faster
                 # For larger directories, yield occasionally to keep UI responsive
                 if not is_small_directory:
                     await asyncio.sleep(0)
-                
+
         except (AccessError, OSError) as e:
             self._handle_access_error(path, e)
 
     def _walk_directory(self, path: Path) -> Iterator[Tuple[Path, bool, int]]:
         """Synchronous version of _walk_directory_async.
-        
+
         Yields:
             Tuple of (path, is_file, size) for each path encountered
         """
@@ -307,15 +307,15 @@ class DiskScanner:
             for entry in os.scandir(path):
                 try:
                     entry_path = Path(entry.path)
-                    
+
                     if entry.is_symlink():
                         continue
-                        
+
                     if entry.is_dir():
                         if entry.name not in self.options.skip_dirs:
                             # Recursively process subdirectory
                             yield from self._walk_directory(entry_path)
-                            
+
                         # Yield directory itself with size 0 (we calculate dir sizes separately)
                         yield entry_path, False, 0
                     else:
@@ -332,7 +332,7 @@ class DiskScanner:
 
     def _update_dir_sizes(self, file_path: Path, file_size: int, is_icloud: bool) -> None:
         """Update directory sizes incrementally as files are processed.
-        
+
         Args:
             file_path: Path to the file
             file_size: Size of the file in bytes
@@ -342,14 +342,14 @@ class DiskScanner:
         if not hasattr(self, '_update_counter'):
             self._update_counter = 0
         self._update_counter += 1
-        
+
         # Update size for all parent directories in memory
         for parent in file_path.parents:
             curr_size, curr_cloud = self._dir_sizes.get(parent, (0, False))
             new_size = curr_size + file_size
             new_cloud = curr_cloud or is_icloud
             self._dir_sizes[parent] = (new_size, new_cloud)
-        
+
         # Only update cache periodically to reduce overhead
         # For large directories, update cache less frequently
         cache_update_frequency = 100
@@ -357,7 +357,7 @@ class DiskScanner:
             cache_update_frequency = 500
         elif self._file_count > 5000:
             cache_update_frequency = 250
-            
+
         if self._update_counter % cache_update_frequency == 0:
             # Batch update the cache for all parent directories
             for parent in file_path.parents:
@@ -366,24 +366,24 @@ class DiskScanner:
 
     def _get_largest_dirs(self, root: Path) -> List[FileInfo]:
         """Get the largest directories from the calculated sizes.
-        
+
         Args:
             root: Root directory of scan
-            
+
         Returns:
             List of directories sorted by size
         """
         # Convert directory sizes to FileInfo objects
         dirs = [FileInfo(p, s, c) for p, (s, c) in self._dir_sizes.items()
                 if p.is_dir() and (p == root or root in p.parents or p in root.parents)]
-        
+
         # Sort by size (largest first)
         dirs.sort(key=lambda x: x.size, reverse=True)
         return dirs[:self.options.max_dirs]
 
     def _handle_access_error(self, path: Path, error: Exception) -> None:
         """Handle and record access errors.
-        
+
         Args:
             path: Path that caused error
             error: Exception that occurred
@@ -395,7 +395,7 @@ class DiskScanner:
     @staticmethod
     def _insert_sorted(items: List[FileInfo], item: FileInfo, max_items: int = None) -> None:
         """Insert item into sorted list maintaining size order.
-        
+
         Args:
             items: Sorted list to insert into
             item: Item to insert
@@ -405,7 +405,7 @@ class DiskScanner:
         # only insert if the item is larger than the smallest item
         if max_items is not None and len(items) >= max_items and item.size <= items[-1].size:
             return  # Skip insertion for items that won't make it into the final list
-            
+
         # Fast path for empty list or when item is smaller than all existing items
         if not items or item.size <= items[-1].size:
             items.append(item)
@@ -413,7 +413,7 @@ class DiskScanner:
             if max_items is not None and len(items) > max_items:
                 items.pop()
             return
-            
+
         # Fast path for when item is larger than all existing items
         if item.size > items[0].size:
             items.insert(0, item)
@@ -421,7 +421,7 @@ class DiskScanner:
             if max_items is not None and len(items) > max_items:
                 items.pop()
             return
-            
+
         # Binary search for insertion point
         low, high = 0, len(items) - 1
         while low <= high:
@@ -430,9 +430,9 @@ class DiskScanner:
                 high = mid - 1
             else:
                 low = mid + 1
-                
+
         items.insert(low, item)
-        
+
         # Trim if needed
         if max_items is not None and len(items) > max_items:
             items.pop()
@@ -440,10 +440,10 @@ class DiskScanner:
     def _print_access_issues_summary(self) -> None:
         """Print a rich-formatted summary of access issues."""
         from ..ui.formatters import TableFormatter
-        
+
         if not self._access_issues:
             return
-            
+
         formatter = TableFormatter(self.console)
         issues_table = formatter.format_access_issues(self._access_issues)
         if issues_table:
@@ -454,7 +454,7 @@ class DiskScanner:
         self, output_path: Path, files: List[FileInfo], dirs: List[FileInfo], scanned_path: Path
     ) -> None:
         """Save the scan results to a JSON file.
-        
+
         Args:
             output_path: Path to the output JSON file.
             files: List of largest files.
@@ -462,7 +462,7 @@ class DiskScanner:
             scanned_path: The root directory that was scanned.
         """
         from ..ui.styles import GREEN, RED
-        
+
         results = {
             "scan_info": {
                 "timestamp": datetime.now().isoformat(),

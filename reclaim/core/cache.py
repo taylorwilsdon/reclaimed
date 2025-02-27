@@ -17,10 +17,10 @@ class CacheEntry:
 
 class DirectorySizeCache:
     """High-performance cache for directory sizes."""
-    
+
     def __init__(self, ttl: float = 600.0):  # 10 minute default TTL
         """Initialize the cache.
-        
+
         Args:
             ttl: Time-to-live in seconds for cache entries
         """
@@ -30,16 +30,16 @@ class DirectorySizeCache:
 
     def get(self, path: Path) -> Optional[Tuple[int, bool]]:
         """Get size and iCloud status for a directory if cached.
-        
+
         Args:
             path: Directory path to look up
-            
+
         Returns:
             Tuple of (size, is_icloud) if cached and valid, None otherwise
         """
         # Convert path to string for faster dictionary lookup
         path_str = str(path)
-        
+
         # Use a try/finally with lock to ensure lock is always released
         try:
             self._lock.acquire()
@@ -49,7 +49,7 @@ class DirectorySizeCache:
                 if time.time() - entry.timestamp > self._ttl:
                     entry.valid = False
                     return None
-                
+
                 return entry.size, entry.is_icloud
             return None
         finally:
@@ -57,7 +57,7 @@ class DirectorySizeCache:
 
     def set(self, path: Path, size: int, is_icloud: bool) -> None:
         """Cache the size and iCloud status for a directory.
-        
+
         Args:
             path: Directory path to cache
             size: Total size in bytes
@@ -65,7 +65,7 @@ class DirectorySizeCache:
         """
         # Convert path to string for faster dictionary operations
         path_str = str(path)
-        
+
         try:
             self._lock.acquire()
             self._cache[path_str] = CacheEntry(
@@ -78,7 +78,7 @@ class DirectorySizeCache:
 
     def get_all_cached_dirs(self) -> List[Path]:
         """Get all cached directory paths.
-        
+
         Returns:
             List of all cached directory paths
         """
@@ -90,12 +90,12 @@ class DirectorySizeCache:
 
     def invalidate(self, path: Path) -> None:
         """Invalidate cache entry for a directory.
-        
+
         Args:
             path: Directory path to invalidate
         """
         path_str = str(path)
-        
+
         try:
             self._lock.acquire()
             if path_str in self._cache:
@@ -105,7 +105,7 @@ class DirectorySizeCache:
 
     def invalidate_by_pattern(self, pattern: str) -> None:
         """Invalidate cache entries matching a pattern.
-        
+
         Args:
             pattern: String pattern to match against path names
         """
@@ -128,7 +128,7 @@ class DirectorySizeCache:
     def cleanup(self) -> None:
         """Remove expired and invalid entries."""
         current_time = time.time()
-        
+
         try:
             self._lock.acquire()
             # Create list of keys to remove to avoid modifying dict during iteration
@@ -136,7 +136,7 @@ class DirectorySizeCache:
                 path_str for path_str, entry in self._cache.items()
                 if not entry.valid or (current_time - entry.timestamp > self._ttl)
             ]
-            
+
             # Remove invalid entries
             for path_str in to_remove:
                 del self._cache[path_str]

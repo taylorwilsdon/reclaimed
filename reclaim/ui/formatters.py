@@ -19,7 +19,7 @@ class TableFormatter:
 
     def __init__(self, console: Optional[Console] = None):
         """Initialize the formatter.
-        
+
         Args:
             console: Rich console to use for output
         """
@@ -27,11 +27,11 @@ class TableFormatter:
 
     def format_files_table(self, files: List[FileInfo], root_path: Path) -> Table:
         """Format list of files into a rich table.
-        
+
         Args:
             files: List of files to display
             root_path: Root path for relative path display
-            
+
         Returns:
             Rich table of formatted file information
         """
@@ -43,38 +43,38 @@ class TableFormatter:
             padding=(0, 1),
             expand=True,
         )
-        
+
         table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
         table.add_column("Storage", style=YELLOW, no_wrap=True)
         table.add_column("Path", style=BASE0)
-        
+
         for file_info in files:
             try:
                 rel_path = file_info.path.relative_to(root_path)
             except ValueError:
                 rel_path = file_info.path
-                
+
             storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
             storage_cell = Text(
                 storage_status,
                 style=BLUE if file_info.is_icloud else GREEN
             )
-            
+
             table.add_row(
                 format_size(file_info.size),
                 storage_cell,
                 str(rel_path)
             )
-            
+
         return table
 
     def format_dirs_table(self, dirs: List[FileInfo], root_path: Path) -> Table:
         """Format list of directories into a rich table.
-        
+
         Args:
             dirs: List of directories to display
             root_path: Root path for relative path display
-            
+
         Returns:
             Rich table of formatted directory information
         """
@@ -86,43 +86,43 @@ class TableFormatter:
             padding=(0, 1),
             expand=True,
         )
-        
+
         table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
         table.add_column("Storage", style=YELLOW, no_wrap=True)
         table.add_column("Path", style=BASE0)
-        
+
         for dir_info in dirs:
             try:
                 rel_path = dir_info.path.relative_to(root_path)
             except ValueError:
                 rel_path = dir_info.path
-                
+
             storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
             storage_cell = Text(
                 storage_status,
                 style=BLUE if dir_info.is_icloud else GREEN
             )
-            
+
             table.add_row(
                 format_size(dir_info.size),
                 storage_cell,
                 str(rel_path)
             )
-            
+
         return table
 
     def format_access_issues(self, issues: dict[Path, str]) -> Optional[Table]:
         """Format access issues into a rich table.
-        
+
         Args:
             issues: Dictionary of paths and their access errors
-            
+
         Returns:
             Rich table of formatted issues, or None if no issues
         """
         if not issues:
             return None
-            
+
         table = Table(
             show_header=False,
             box=None,
@@ -132,12 +132,12 @@ class TableFormatter:
             title_justify="left",
             border_style=YELLOW,
         )
-        
+
         # Group issues by error type
         issues_by_type: dict[str, List[Path]] = {}
         for path, error in issues.items():
             issues_by_type.setdefault(error, []).append(path)
-            
+
         for error_type, paths in issues_by_type.items():
             table.add_row(
                 f"[{YELLOW}]•[/]",
@@ -154,7 +154,7 @@ class TableFormatter:
                     "  [dim]>[/dim]",
                     f"[dim]...and {len(paths) - 3} more similar items[/dim]"
                 )
-                
+
         return table
 
     def print_scan_summary(
@@ -165,7 +165,7 @@ class TableFormatter:
         issues: dict[Path, str]
     ) -> None:
         """Print complete scan results.
-        
+
         Args:
             files: List of largest files
             dirs: List of largest directories
@@ -176,7 +176,7 @@ class TableFormatter:
         self.console.print(self.format_files_table(files, root_path))
         self.console.print()
         self.console.print(self.format_dirs_table(dirs, root_path))
-        
+
         if issues:
             self.console.print()
             issues_table = self.format_access_issues(issues)
