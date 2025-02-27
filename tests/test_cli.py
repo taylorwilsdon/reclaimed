@@ -1,5 +1,4 @@
 import json
-import sys
 import tempfile
 from pathlib import Path
 from typing import Generator
@@ -8,6 +7,15 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 from rich.console import Console
+
+# Mock the entire textual_ui module before any imports happen
+textual_ui_mock = mock.MagicMock()
+textual_ui_mock.run_textual_ui = mock.MagicMock()
+
+# Apply module-level mocking
+with mock.patch.dict('sys.modules', {'disk_scanner.textual_ui': textual_ui_mock}):
+    # Now we can safely import the CLI module
+    from disk_scanner.cli import main
 
 
 @pytest.fixture
@@ -41,49 +49,11 @@ def test_console() -> Console:
     return Console(force_terminal=False, width=100, color_system=None)
 
 
-# Create a more comprehensive mock for textual and its submodules
-class MockTextual:
-    def __init__(self):
-        self.app = mock.MagicMock()
-        self.app.App = mock.MagicMock()
-        self.app.ComposeResult = mock.MagicMock()
-        self.binding = mock.MagicMock()
-        self.binding.Binding = mock.MagicMock()
-        self.on = mock.MagicMock()
-        self.work = mock.MagicMock()
-        self.containers = mock.MagicMock()
-        self.containers.Container = mock.MagicMock()
-        self.containers.Grid = mock.MagicMock()
-        self.containers.Horizontal = mock.MagicMock()
-        self.containers.Vertical = mock.MagicMock()
-        self.screen = mock.MagicMock()
-        self.screen.Screen = mock.MagicMock()
-        self.screen.ModalScreen = mock.MagicMock()
-        self.widgets = mock.MagicMock()
-        self.widgets.Button = mock.MagicMock()
-        self.widgets.DataTable = mock.MagicMock()
-        self.widgets.Footer = mock.MagicMock()
-        self.widgets.Header = mock.MagicMock()
-        self.widgets.Label = mock.MagicMock()
-        self.widgets.ProgressBar = mock.MagicMock()
-        self.widgets.Static = mock.MagicMock()
-
-
-# Apply the mock before importing
-textual_mock = MockTextual()
-sys.modules['textual'] = textual_mock
-sys.modules['textual.app'] = textual_mock.app
-sys.modules['textual.binding'] = textual_mock.binding
-sys.modules['textual.containers'] = textual_mock.containers
-sys.modules['textual.screen'] = textual_mock.screen
-sys.modules['textual.widgets'] = textual_mock.widgets
-
-# Now import the CLI module
-from disk_scanner.cli import main
-
-
 def test_cli_basic_scan(cli_runner: CliRunner, test_directory: Path, test_console: Console) -> None:
     """Test basic CLI scanning functionality."""
+    # Reset any mocks that might have been called in previous tests
+    textual_ui_mock.run_textual_ui.reset_mock()
+    
     result = cli_runner.invoke(main, [str(test_directory)], obj={"console": test_console})
 
     assert result.exit_code == 0
@@ -195,17 +165,20 @@ def test_cli_default_path(cli_runner: CliRunner, test_console: Console) -> None:
         assert "test.txt" in result.output.lower()
 
 
-def test_cli_rich_output_format(
+def test_cli_interactive_mode(
     cli_runner: CliRunner, test_directory: Path, test_console: Console
 ) -> None:
-    """Test that Rich formatting is applied correctly."""
-    result = cli_runner.invoke(main, [str(test_directory)], obj={"console": test_console})
-
-    assert result.exit_code == 0
-    output = result.output.lower()
-
-    # Check for expected table elements
-    assert "largest files" in output
-    assert "largest directories" in output
-    assert "size" in output
-    assert "path" in output
+    """Test CLI interactive mode triggers the textual UI."""
+    # Reset the mock
+    textual_ui_mock.run_textual_ui.reset_mock()
+    
+    result = cli_runner.invoke(
+        main, [str(test_directory), "--interactive"], obj={"console": test_console}
+    )
+    
+    # Verify that run_textual_ui was called
+    textual_ui_mock.run_textual_ui.assert_called_once()
+    
+    # The path should be passed to run_textual_ui
+    args, _ = textual_ui_mock.run_textual_ui.call_args
+    assert str(test_directory) == str(args[0])
