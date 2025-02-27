@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Generator, Iterator
+from typing import Any, Generator, Iterator, List
 
 import pytest
 from rich.console import Console
@@ -46,7 +46,12 @@ def scanner(temp_directory: Path) -> DiskScanner:
 
 def test_scan_directory_basic(scanner: DiskScanner, temp_directory: Path) -> None:
     """Test basic directory scanning functionality."""
-    files, dirs = scanner._calculate_dir_sizes(temp_directory)
+    # Call scan_directory method which should populate the internal file and dir lists
+    scanner._calculate_dir_sizes(temp_directory)
+    
+    # Access the internal file and directory lists
+    files = scanner._files
+    dirs = scanner._dirs
 
     # Verify files are found and sorted by size
     assert len(files) > 0
@@ -63,7 +68,11 @@ def test_scan_directory_basic(scanner: DiskScanner, temp_directory: Path) -> Non
 
 def test_icloud_detection(scanner: DiskScanner, temp_directory: Path) -> None:
     """Test detection of iCloud vs local files."""
-    files, _ = scanner._calculate_dir_sizes(temp_directory)
+    # Call scan_directory method which should populate the internal file list
+    scanner._calculate_dir_sizes(temp_directory)
+    
+    # Access the internal file list
+    files = scanner._files
 
     icloud_files = [f for f in files if f.is_icloud]
     local_files = [f for f in files if not f.is_icloud]
@@ -96,7 +105,12 @@ def test_access_issues(scanner: DiskScanner, temp_directory: Path) -> None:
     os.chmod(restricted_dir, 0o000)
 
     try:
-        files, dirs = scanner._calculate_dir_sizes(temp_directory)
+        # Call scan_directory method which should populate the internal lists
+        scanner._calculate_dir_sizes(temp_directory)
+        
+        # Access the internal file and directory lists
+        files = scanner._files
+        dirs = scanner._dirs
 
         # Verify the scan completed despite access issues
         assert len(files) > 0
@@ -115,7 +129,11 @@ def test_save_results(scanner: DiskScanner, temp_directory: Path) -> None:
     output_file = temp_directory / "results.json"
 
     # Perform scan
-    files, dirs = scanner._calculate_dir_sizes(temp_directory)
+    scanner._calculate_dir_sizes(temp_directory)
+    
+    # Access the internal file and directory lists
+    files = scanner._files
+    dirs = scanner._dirs
 
     # Save results
     scanner.save_results(output_file, files, dirs, temp_directory)
@@ -147,7 +165,12 @@ def test_keyboard_interrupt_handling(scanner: DiskScanner, temp_directory: Path)
     scanner._walk_directory = mock_walk  # type: ignore
 
     # Verify scan completes gracefully with empty results
-    files, dirs = scanner._calculate_dir_sizes(temp_directory)
+    scanner._calculate_dir_sizes(temp_directory)
+    
+    # Access the internal file and directory lists
+    files = scanner._files
+    dirs = scanner._dirs
+    
     assert len(files) == 0
     assert len(dirs) == 0
 
@@ -157,11 +180,13 @@ def test_max_results_limit(scanner: DiskScanner, temp_directory: Path) -> None:
     max_files = 2
     max_dirs = 1
 
-    files, dirs = scanner._calculate_dir_sizes(temp_directory)
+    # Call the method with max limits
+    scanner._calculate_dir_sizes(temp_directory, max_files=max_files, max_dirs=max_dirs)
     
-    # Limit the results after calculation to simulate the max limits
-    files = files[:max_files]
-    dirs = dirs[:max_dirs]
+    # Access the internal file and directory lists
+    files = scanner._files
+    dirs = scanner._dirs
 
+    # Verify the limits were respected
     assert len(files) <= max_files
     assert len(dirs) <= max_dirs
