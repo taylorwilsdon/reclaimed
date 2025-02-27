@@ -47,6 +47,8 @@ class MockTextual:
         self.app = mock.MagicMock()
         self.app.App = mock.MagicMock()
         self.app.ComposeResult = mock.MagicMock()
+        self.binding = mock.MagicMock()
+        self.binding.Binding = mock.MagicMock()
         self.on = mock.MagicMock()
         self.work = mock.MagicMock()
         self.containers = mock.MagicMock()
@@ -71,6 +73,7 @@ class MockTextual:
 textual_mock = MockTextual()
 sys.modules['textual'] = textual_mock
 sys.modules['textual.app'] = textual_mock.app
+sys.modules['textual.binding'] = textual_mock.binding
 sys.modules['textual.containers'] = textual_mock.containers
 sys.modules['textual.screen'] = textual_mock.screen
 sys.modules['textual.widgets'] = textual_mock.widgets
