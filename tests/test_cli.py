@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 from pathlib import Path
 from typing import Generator
@@ -40,10 +41,42 @@ def test_console() -> Console:
     return Console(force_terminal=False, width=100, color_system=None)
 
 
-# Mock the textual module before importing disk_scanner modules
-textual_mock = mock.MagicMock()
-with mock.patch.dict('sys.modules', {'textual': textual_mock}):
-    from disk_scanner.cli import main
+# Create a more comprehensive mock for textual and its submodules
+class MockTextual:
+    def __init__(self):
+        self.app = mock.MagicMock()
+        self.app.App = mock.MagicMock()
+        self.app.ComposeResult = mock.MagicMock()
+        self.on = mock.MagicMock()
+        self.work = mock.MagicMock()
+        self.containers = mock.MagicMock()
+        self.containers.Container = mock.MagicMock()
+        self.containers.Grid = mock.MagicMock()
+        self.containers.Horizontal = mock.MagicMock()
+        self.containers.Vertical = mock.MagicMock()
+        self.screen = mock.MagicMock()
+        self.screen.Screen = mock.MagicMock()
+        self.screen.ModalScreen = mock.MagicMock()
+        self.widgets = mock.MagicMock()
+        self.widgets.Button = mock.MagicMock()
+        self.widgets.DataTable = mock.MagicMock()
+        self.widgets.Footer = mock.MagicMock()
+        self.widgets.Header = mock.MagicMock()
+        self.widgets.Label = mock.MagicMock()
+        self.widgets.ProgressBar = mock.MagicMock()
+        self.widgets.Static = mock.MagicMock()
+
+
+# Apply the mock before importing
+textual_mock = MockTextual()
+sys.modules['textual'] = textual_mock
+sys.modules['textual.app'] = textual_mock.app
+sys.modules['textual.containers'] = textual_mock.containers
+sys.modules['textual.screen'] = textual_mock.screen
+sys.modules['textual.widgets'] = textual_mock.widgets
+
+# Now import the CLI module
+from disk_scanner.cli import main
 
 
 def test_cli_basic_scan(cli_runner: CliRunner, test_directory: Path, test_console: Console) -> None:
