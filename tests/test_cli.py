@@ -2,12 +2,11 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Generator
+from unittest import mock
 
 import pytest
 from click.testing import CliRunner
 from rich.console import Console
-
-from disk_scanner.cli import main
 
 
 @pytest.fixture
@@ -39,6 +38,12 @@ def test_directory() -> Generator:
 def test_console() -> Console:
     """Create a Rich console for testing."""
     return Console(force_terminal=False, width=100, color_system=None)
+
+
+# Mock the textual module before importing disk_scanner modules
+textual_mock = mock.MagicMock()
+with mock.patch.dict('sys.modules', {'textual': textual_mock}):
+    from disk_scanner.cli import main
 
 
 def test_cli_basic_scan(cli_runner: CliRunner, test_directory: Path, test_console: Console) -> None:
