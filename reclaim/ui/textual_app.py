@@ -4,20 +4,19 @@ import asyncio
 import os
 import shutil
 import time
-import uuid
 from pathlib import Path
-from typing import List, Optional, Callable, Dict, Any
+from typing import List, Optional, Callable, Any
 
 from rich.text import Text
-from textual import on, work
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical, Horizontal
-from textual.screen import Screen, ModalScreen
+from textual.containers import Container, Horizontal
+from textual.screen import ModalScreen
 from textual.worker import Worker, WorkerState
 from textual.widgets import (
     Button, DataTable, Footer, Header, Static,
-    Label, Input, RadioSet, RadioButton
+    LoadingIndicator, RadioSet, RadioButton
 )
 
 from ..core import DiskScanner, FileInfo, ScanOptions
@@ -168,7 +167,9 @@ class ReclaimApp(App):
             files_table.add_columns("Size", "Storage", "Path")
             yield files_table
 
-        yield Footer()
+        with Horizontal(id="footer-container"):
+            yield Footer()
+            yield LoadingIndicator(id="scan-progress")
 
     def on_mount(self) -> None:
         """Event handler called when the app is mounted."""
@@ -196,6 +197,10 @@ class ReclaimApp(App):
         # Reset sort tracking
         self._files_sorted = False
         self._dirs_sorted = False
+
+        # Show loading indicator
+        loading = self.query_one("#scan-progress")
+        loading.styles.display = "block"
 
         # Start async scan with optimized worker function
         self.scan_task = self.run_worker(
@@ -225,7 +230,7 @@ class ReclaimApp(App):
 
         # Start timer task and store reference
         self._timer_task = asyncio.create_task(update_timer())
-        
+
         # Buffers to collect data between UI updates
         files_buffer = []
         dirs_buffer = []
@@ -326,7 +331,13 @@ class ReclaimApp(App):
         if event.worker.name != "Directory Scanner":
             return
 
+        # Get loading indicator
+        loading = self.query_one("#scan-progress")
+
         if event.worker.state == WorkerState.SUCCESS:
+            # Hide loading indicator
+            loading.styles.display = "none"
+
             # Get result data from worker
             file_count = 0
             if event.worker.result:
@@ -371,6 +382,8 @@ class ReclaimApp(App):
             self.focus_active_table()
 
         elif event.worker.state == WorkerState.ERROR:
+            # Hide loading indicator
+            loading.styles.display = "none"
             self.notify("Scan failed!", severity="error")
 
     # Track last table update to avoid redundant updates

@@ -227,4 +227,23 @@ RadioButton.-selected {
     background: $blue;
     color: $base3;
 }
+
+#footer-container {
+    layout: horizontal;
+    dock: bottom;
+    height: 3;
+    align-horizontal: left;
+    align-vertical: middle;
+    padding: 0 1;
+}
+
+#scan-progress {
+    margin-left: 2;
+    height: 1;
+    background: $base02;
+}
+
+Footer {
+    height: 1;
+}
 """
