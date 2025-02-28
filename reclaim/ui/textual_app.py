@@ -14,7 +14,6 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, Horizontal
 from textual.screen import Screen, ModalScreen
-from textual.widgets import ProgressBar
 from textual.worker import Worker, WorkerState
 from textual.widgets import (
     Button, DataTable, Footer, Header, Static,
@@ -38,85 +37,10 @@ class ProgressManager:
         """
         self.app = app
         self.container_id = container_id
-        self.current_progress_bar: Optional[ProgressBar] = None
-        self.progress_bar_id: Optional[str] = None
         self.last_update_time = 0
         self.update_interval = 0.1  # Update at most 10 times per second
         self.last_progress_value = 0
         self.min_progress_increment = 0.005  # Minimum 0.5% change to update
-
-    def create_progress_bar(self) -> ProgressBar:
-        """Create a new progress bar with a unique ID.
-
-        Returns:
-            The newly created progress bar
-        """
-        # Clean up any existing progress bar first
-        self.remove_progress_bar()
-
-        # Generate a unique ID for the progress bar
-        unique_id = f"progress-bar-{uuid.uuid4().hex[:8]}"
-        self.progress_bar_id = unique_id
-
-        # Create and mount the progress bar
-        progress_bar = ProgressBar(id=unique_id)
-        self.current_progress_bar = progress_bar
-
-        try:
-            container = self.app.query_one(f"#{self.container_id}")
-            container.mount(progress_bar)
-        except Exception as e:
-            self.app.notify(f"Error mounting progress bar: {e}", severity="error")
-            return None
-
-        return progress_bar
-
-    def update_progress(self, progress: float) -> None:
-        """Update the progress bar with smoothing.
-
-        Args:
-            progress: Progress value between 0 and 1
-        """
-        if not self.current_progress_bar:
-            return
-
-        # Apply smoothing to avoid choppy updates
-        current_time = time.time()
-        time_since_update = current_time - self.last_update_time
-        progress_change = abs(progress - self.last_progress_value)
-
-        # Only update if enough time has passed or progress change is significant
-        if (time_since_update >= self.update_interval or
-            progress_change >= self.min_progress_increment or
-            progress >= 1.0):  # Always update on completion
-
-            try:
-                # Update without triggering a full redraw
-                self.current_progress_bar.update(progress=progress)
-                self.last_update_time = current_time
-                self.last_progress_value = progress
-            except Exception:
-                # Progress bar might have been removed
-                self.current_progress_bar = None
-
-    def remove_progress_bar(self) -> None:
-        """Safely remove the current progress bar if it exists."""
-        if not self.current_progress_bar:
-            return
-
-        try:
-            # Try to find the progress bar by its ID
-            if self.progress_bar_id:
-                progress_bar = self.app.query_one(f"#{self.progress_bar_id}")
-                progress_bar.remove()
-        except Exception:
-            # Progress bar might already be removed or not found
-            pass
-
-        # Reset state
-        self.current_progress_bar = None
-        self.progress_bar_id = None
-        self.last_progress_value = 0
 
 
 class ConfirmationDialog(ModalScreen):
@@ -263,9 +187,6 @@ class ReclaimApp(App):
         self.largest_files = []
         self.largest_dirs = []
 
-        # Create a new progress bar using the progress manager
-        self.progress_bar = self.progress_manager.create_progress_bar()
-
         # Start timing
         self.start_time = time.time()
 
@@ -318,10 +239,6 @@ class ReclaimApp(App):
                 files_buffer = progress.files
             if progress.dirs:
                 dirs_buffer = progress.dirs
-
-            # Update progress bar with smoothing via the progress manager
-            if hasattr(progress, 'progress'):
-                self.progress_manager.update_progress(progress.progress)
 
             current_time = time.time()
             elapsed_time = current_time - scan_start_time
@@ -425,13 +342,11 @@ class ReclaimApp(App):
             self.apply_sort(self.sort_method)
             self.update_tables()
 
-            # Remove progress bar and focus the active table
-            self.progress_manager.remove_progress_bar()
+            # focus the active table
             self.focus_active_table()
 
         elif event.worker.state == WorkerState.ERROR:
             self.notify("Scan failed!", severity="error")
-            self.progress_manager.remove_progress_bar()
 
     # Track last table update to avoid redundant updates
     _last_table_update = {}
