@@ -32,19 +32,19 @@ class MetricsPublisher:
         self._update_frequency = update_frequency
         self._update_interval = 1.0 / update_frequency
         self._max_latency = max_latency
-        
+
         # Metrics buffer
         self._buffer = MetricsBuffer(buffer_size)
-        
+
         # Subscriber management
         self._subscribers: Set[weakref.ref[MetricsSubscriber]] = set()
         self._subscribers_lock = threading.Lock()
-        
+
         # Publisher thread control
         self._should_stop = threading.Event()
         self._is_running = threading.Event()
         self._publish_thread: Optional[threading.Thread] = None
-        
+
         # Performance tracking
         self._last_publish_time = 0.0
         self._publish_count = 0
@@ -123,7 +123,7 @@ class MetricsPublisher:
             with self._stats_lock:
                 self._publish_count += 1
             return True
-        
+
         # Buffer full, increment drop count
         with self._stats_lock:
             self._drop_count += 1
@@ -141,7 +141,7 @@ class MetricsPublisher:
                 # Calculate sleep time to maintain target frequency
                 elapsed = time.perf_counter_ns() / 1e9 - loop_start
                 sleep_time = max(0, self._update_interval - elapsed)
-                
+
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 

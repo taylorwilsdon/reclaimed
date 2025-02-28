@@ -21,12 +21,12 @@ def sample_file_structure(temp_dir):
     dir2 = temp_dir / "dir2"
     dir1.mkdir()
     dir2.mkdir()
-    
+
     # Create sample files with known sizes
     (dir1 / "file1.txt").write_text("Hello" * 100)  # 500 bytes
     (dir1 / "file2.txt").write_text("World" * 200)  # 1000 bytes
     (dir2 / "file3.txt").write_text("Test" * 300)   # 1200 bytes
-    
+
     return temp_dir
 
 
@@ -62,7 +62,7 @@ def mock_filesystem(temp_dir):
             }
         }
     }
-    
+
     def create_structure(base_path, struct):
         for name, content in struct.items():
             path = base_path / name
@@ -71,7 +71,7 @@ def mock_filesystem(temp_dir):
                 create_structure(path, content)
             else:
                 path.write_text(content)
-    
+
     root = temp_dir / "mock_fs"
     root.mkdir()
     create_structure(root, structure)

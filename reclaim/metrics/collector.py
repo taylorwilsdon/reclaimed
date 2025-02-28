@@ -85,10 +85,10 @@ class MetricsCollector:
         """
         operation_id = self._next_operation_id.increment()
         timing = OperationTiming.start(operation_name)
-        
+
         with self._timings_lock:
             self._operation_timings[operation_id] = timing
-        
+
         return operation_id
 
     def end_operation(self, operation_id: int) -> Optional[float]:
@@ -177,7 +177,7 @@ class MetricsCollector:
                 next_update = self._last_update_time + update_interval
                 current_time = time.perf_counter_ns() / 1e9
                 sleep_time = max(0, next_update - current_time)
-                
+
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
@@ -201,10 +201,10 @@ class MetricsCollector:
         self._last_update_time = self._start_time
         self._last_file_count = 0
         self._last_byte_count = 0
-        
+
         with self._timings_lock:
             self._operation_timings.clear()
-        
+
         self._buffer.clear()
 
     def get_buffer(self) -> MetricsBuffer:
