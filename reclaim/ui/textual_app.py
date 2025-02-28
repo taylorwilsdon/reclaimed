@@ -187,8 +187,8 @@ class ReclaimApp(App):
         self.largest_files = []
         self.largest_dirs = []
 
-        # Start timing
-        self.start_time = time.time()
+        # Start timing with monotonic clock
+        self.start_time = time.monotonic()
 
         # Notify user that scan is starting
         self.notify("Starting directory scan...", timeout=2)
@@ -208,52 +208,77 @@ class ReclaimApp(App):
         """Worker function that processes the async generator from scan_async with optimized UI updates."""
         # Track when we last updated the UI
         last_ui_update = 0
-
-        # Base update interval - will be adjusted dynamically based on file count
         base_ui_update_interval = 0.5
 
-        # Track scan progress
-        scan_start_time = time.time()
-
-        # Buffers to collect data between UI updates
-        files_buffer = []
-        dirs_buffer = []
-
-        # Track the last file count to detect large jumps
-        last_file_count = 0
-
-        # Get references to status elements
+        # Get UI elements once
         timer_display = self.query_one("#scan-timer")
         count_display = self.query_one("#scan-count")
 
-        # Update timer more frequently than tables for better feedback
-        timer_update_interval = 0.25  # Update timer 4 times per second
-        last_timer_update = 0
-
-        async for progress in self.scanner.scan_async(self.path):
-            if not progress:
-                continue
-
-            # Always update our data in memory
-            if progress.files:
-                files_buffer = progress.files
-            if progress.dirs:
-                dirs_buffer = progress.dirs
-
-            current_time = time.time()
-            elapsed_time = current_time - scan_start_time
-
-            # Update timer and file count more frequently than tables
-            if current_time - last_timer_update >= timer_update_interval:
-                # Format elapsed time as MM:SS
-                minutes = int(elapsed_time // 60)
-                seconds = int(elapsed_time % 60)
+        # Create independent timer task
+        async def update_timer():
+            start = time.monotonic()
+            while True:
+                elapsed = time.monotonic() - start
+                minutes, seconds = divmod(int(elapsed), 60)
                 timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
+                await asyncio.sleep(0.05)  # Update 20 times per second for smooth display
 
-                # Update file count
+        # Start timer task and store reference
+        self._timer_task = asyncio.create_task(update_timer())
+        
+        # Buffers to collect data between UI updates
+        files_buffer = []
+        dirs_buffer = []
+        last_file_count = 0
+
+        try:
+            async for progress in self.scanner.scan_async(self.path):
+                if not progress:
+                    continue
+
+                # Update our data in memory
+                if progress.files:
+                    files_buffer = progress.files
+                if progress.dirs:
+                    dirs_buffer = progress.dirs
+
+                # Update file count independently
                 count_display.update(f"Files: {progress.scanned:,}")
 
-                last_timer_update = current_time
+                # Dynamically adjust update interval based on files scanned
+                ui_update_interval = base_ui_update_interval
+                if progress.scanned > 100000:
+                    ui_update_interval = 5.0
+                elif progress.scanned > 50000:
+                    ui_update_interval = 3.0
+                elif progress.scanned > 10000:
+                    ui_update_interval = 2.0
+                elif progress.scanned > 5000:
+                    ui_update_interval = 1.0
+
+                # Check if it's time to update tables
+                current_time = time.monotonic()
+                if current_time - last_ui_update > ui_update_interval:
+                    self.largest_files = files_buffer
+                    self.largest_dirs = dirs_buffer
+                    self.apply_sort(self.sort_method)
+                    self.update_tables()
+                    last_ui_update = current_time
+                    last_file_count = progress.scanned
+                    await asyncio.sleep(0)
+
+        except Exception as e:
+            self.notify(f"Scan error: {str(e)}", severity="error")
+            raise
+
+        finally:
+            # Always clean up the timer task
+            if hasattr(self, '_timer_task'):
+                self._timer_task.cancel()
+                try:
+                    await self._timer_task
+                except asyncio.CancelledError:
+                    pass
 
             # Dynamically adjust update interval based on files scanned
             ui_update_interval = base_ui_update_interval
@@ -302,9 +327,6 @@ class ReclaimApp(App):
             return
 
         if event.worker.state == WorkerState.SUCCESS:
-            # Final update - set progress to 100% without triggering a full redraw
-            self.progress_manager.update_progress(1.0)
-
             # Get result data from worker
             file_count = 0
             if event.worker.result:
@@ -320,23 +342,26 @@ class ReclaimApp(App):
                     self.largest_dirs = result["dirs"]
                     self._dirs_sorted = False
 
-            # Calculate and display elapsed time
-            elapsed = time.time() - self.start_time
+            # Get elapsed time for notification
+            elapsed = time.monotonic() - self.start_time
 
-            # Format final elapsed time
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-
-            # Update status displays with final values
-            timer_display = self.query_one("#scan-timer")
+            # Update final file count
             count_display = self.query_one("#scan-count")
-            timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
             count_display.update(f"Files: {file_count:,}")
 
+            # Show completion notification
             self.notify(
                 f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.",
                 timeout=5
             )
+
+            # Clean up timer task
+            if hasattr(self, '_timer_task'):
+                self._timer_task.cancel()
+                try:
+                    await self._timer_task
+                except asyncio.CancelledError:
+                    pass
 
             # Apply sort and update tables only once at the end
             self.apply_sort(self.sort_method)
