@@ -175,12 +175,19 @@ class ReclaimApp(App):
         """Event handler called when the app is mounted."""
         # Initialize progress manager
         self.progress_manager = ProgressManager(self, "main-container")
+        
+        # Debug header visibility
+        dirs_header = self.query_one("#dirs-section-header")
+        files_header = self.query_one("#files-section-header")
 
         # Start the initial scan
         self.scan_directory()
 
         # Set initial focus to the files table after scan completes
         self.set_timer(0.1, self.focus_active_table)
+        
+        # Check header visibility again after a short delay
+        self.set_timer(1.0, self.check_header_visibility)
 
     def scan_directory(self) -> None:
         """Scan the directory and update the tables incrementally."""
@@ -235,6 +242,10 @@ class ReclaimApp(App):
         files_buffer = []
         dirs_buffer = []
         last_file_count = 0
+        
+        # Initialize progress with default values in case of early exception
+        progress = None
+        current_time = time.monotonic()
 
         try:
             async for progress in self.scanner.scan_async(self.path):
@@ -287,36 +298,39 @@ class ReclaimApp(App):
 
             # Dynamically adjust update interval based on files scanned
             ui_update_interval = base_ui_update_interval
-            if progress.scanned > 100000:
-                ui_update_interval = 5.0  # Very infrequent updates for huge directories
-            elif progress.scanned > 50000:
-                ui_update_interval = 3.0  # Very infrequent updates for very large directories
-            elif progress.scanned > 10000:
-                ui_update_interval = 2.0  # Less frequent updates for large directories
-            elif progress.scanned > 5000:
-                ui_update_interval = 1.0  # Moderate updates for medium directories
+            
+            # Only process progress data if we have a valid progress object
+            if progress is not None:
+                if progress.scanned > 100000:
+                    ui_update_interval = 5.0  # Very infrequent updates for huge directories
+                elif progress.scanned > 50000:
+                    ui_update_interval = 3.0  # Very infrequent updates for very large directories
+                elif progress.scanned > 10000:
+                    ui_update_interval = 2.0  # Less frequent updates for large directories
+                elif progress.scanned > 5000:
+                    ui_update_interval = 1.0  # Moderate updates for medium directories
 
-            # Force an update if we've scanned a lot more files since the last update
-            # This ensures we show progress even during long update intervals
-            force_update = progress.scanned - last_file_count > 5000
+                # Force an update if we've scanned a lot more files since the last update
+                # This ensures we show progress even during long update intervals
+                force_update = progress.scanned - last_file_count > 5000
 
-            # Use adaptive interval between UI updates
-            time_to_update = current_time - last_ui_update > ui_update_interval
+                # Use adaptive interval between UI updates
+                time_to_update = current_time - last_ui_update > ui_update_interval
 
-            # Only update UI periodically, on completion, or when forced
-            if time_to_update or progress.progress >= 1.0 or force_update:
-                # Update our data
-                self.largest_files = files_buffer
-                self.largest_dirs = dirs_buffer
+                # Only update UI periodically, on completion, or when forced
+                if time_to_update or progress.progress >= 1.0 or force_update:
+                    # Update our data
+                    self.largest_files = files_buffer
+                    self.largest_dirs = dirs_buffer
 
-                # Apply sort and update tables
-                self.apply_sort(self.sort_method)
-                self.update_tables()
-                last_ui_update = current_time
-                last_file_count = progress.scanned
+                    # Apply sort and update tables
+                    self.apply_sort(self.sort_method)
+                    self.update_tables()
+                    last_ui_update = current_time
+                    last_file_count = progress.scanned
 
-                # Brief yield to allow UI to update, but keep it minimal
-                await asyncio.sleep(0)
+                    # Brief yield to allow UI to update, but keep it minimal
+                    await asyncio.sleep(0)
 
         # Return final data
         return {
@@ -630,6 +644,24 @@ class ReclaimApp(App):
         if 0 <= row < len(items):
             path = items[row].path
             self.notify(f"Selected: {path}", timeout=3)
+
+    def check_header_visibility(self) -> None:
+        """Check header visibility after a delay."""
+        try:
+            dirs_header = self.query_one("#dirs-section-header")
+            files_header = self.query_one("#files-section-header")
+            print(f"DEBUG: dirs_header visible: {dirs_header.styles.display}")
+            print(f"DEBUG: files_header visible: {files_header.styles.display}")
+            print(f"DEBUG: dirs_header text: {dirs_header.render()}")
+            print(f"DEBUG: files_header text: {files_header.render()}")
+            
+            # Check the DOM order
+            all_widgets = list(self.query("Static"))
+            print("DEBUG: Widget order in DOM:")
+            for i, widget in enumerate(all_widgets):
+                print(f"DEBUG: {i}: {widget.id} - {widget.render()}")
+        except Exception as e:
+            print(f"DEBUG: Error checking headers: {e}")
 
     def focus_active_table(self) -> None:
         """Focus the currently active table based on current_focus."""

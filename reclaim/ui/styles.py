@@ -103,7 +103,6 @@ Screen {
 }
 
 #files-section-header, #dirs-section-header {
-    dock: top;
     height: 1;
     background: $base02;
     color: $blue;
@@ -111,6 +110,7 @@ Screen {
     margin-top: 1;
 }
 
+/* Remove dock: top to keep headers in normal flow */
 #dirs-section-header {
     margin-top: 1;
 }
