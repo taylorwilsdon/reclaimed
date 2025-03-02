@@ -1,8 +1,8 @@
 import pytest
 
-from reclaim.core.errors import InvalidPathError, ScanInterruptedError
-from reclaim.core.scanner import DiskScanner
-from reclaim.core.types import ScanOptions, ScanResult
+from reclaimed.core.errors import InvalidPathError, ScanInterruptedError
+from reclaimed.core.scanner import DiskScanner
+from reclaimed.core.types import ScanOptions, ScanResult
 
 
 def test_scanner_initialization():

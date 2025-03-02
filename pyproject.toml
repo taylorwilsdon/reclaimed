@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "reclaim"
+name = "reclaimed"
 dynamic = ["version"]
 description = "A powerful disk usage analyzer with iCloud support"
 readme = "README.md"
@@ -35,18 +35,18 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/taylorwilsdon/reclaim"
-Repository = "https://github.com/taylorwilsdon/reclaim.git"
-Issues = "https://github.com/taylorwilsdon/reclaim/issues"
+Homepage = "https://github.com/taylorwilsdon/reclaimed"
+Repository = "https://github.com/taylorwilsdon/reclaimed.git"
+Issues = "https://github.com/taylorwilsdon/reclaimed/issues"
 
 [project.scripts]
-reclaim = "reclaim.cli:main"
+reclaimed = "reclaimed.cli:main"
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["reclaim"]
+packages = ["reclaimed"]
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -60,11 +60,11 @@ dependencies = [
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-test-cov = "pytest --cov=reclaim --cov-report=term-missing tests"
+test-cov = "pytest --cov=reclaimed --cov-report=term-missing tests"
 lint = [
     "black .",
     "ruff check .",
-    "mypy reclaim tests",
+    "mypy reclaimed tests",
 ]
 
 [tool.pytest.ini_options]

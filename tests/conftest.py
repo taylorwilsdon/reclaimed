@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from reclaim.metrics.buffer import MetricsBuffer
-from reclaim.metrics.collector import MetricsCollector
+from reclaimed.metrics.buffer import MetricsBuffer
+from reclaimed.metrics.collector import MetricsCollector
 
 
 @pytest.fixture
