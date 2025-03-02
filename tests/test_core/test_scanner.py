@@ -73,13 +73,13 @@ def test_scan_async_functionality(sample_file_structure):
     # synchronous scan method which uses the same underlying logic
     scanner = DiskScanner()
     result = scanner.scan(sample_file_structure)
-    
+
     # Verify the scan completed successfully
     assert result.total_size > 0
     assert result.files_scanned > 0
     assert isinstance(result.files, list)
     assert isinstance(result.directories, list)
-    
+
     # Verify we have the expected files
     assert len(result.files) == 3  # We created 3 files in sample_file_structure
 
