@@ -2,10 +2,6 @@
 
 A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
 
-![Disk Scanner Demo](demo.gif)
-
-<img width="898" alt="image" src="https://github.com/user-attachments/assets/b8c87581-978b-46e4-bf8b-d9e9b2cd5f9b" />
-
 ## Features
 
 - 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficiently 
@@ -25,7 +21,7 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 - pip (Python package installer)
 - Technically not a venv but if you aren't using a venv you're generally doing python wrong
 
-### Using pip
+### Using pip (preferred)
 
 ```bash
 pip install reclaimed
