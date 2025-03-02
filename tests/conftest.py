@@ -1,7 +1,8 @@
-import os
 import tempfile
 from pathlib import Path
+
 import pytest
+
 from reclaim.metrics.buffer import MetricsBuffer
 from reclaim.metrics.collector import MetricsCollector
 

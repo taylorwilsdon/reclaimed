@@ -5,7 +5,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
-from .types import MetricsSnapshot, MetricsError
+from .types import MetricsError, MetricsSnapshot
 
 logger = logging.getLogger(__name__)
 

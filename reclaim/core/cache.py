@@ -4,7 +4,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple
+
 
 @dataclass
 class CacheEntry:

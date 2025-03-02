@@ -51,6 +51,7 @@ packages = ["reclaim"]
 [tool.hatch.envs.default]
 dependencies = [
     "pytest",
+    "pytest-asyncio",
     "pytest-cov",
     "black",
     "mypy",

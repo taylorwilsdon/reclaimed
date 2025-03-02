@@ -7,18 +7,12 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from .core.errors import (
-    AccessError,
-    DiskScannerError,
-    InvalidPathError,
-    ScanInterruptedError
-)
+from .core.errors import AccessError, DiskScannerError, InvalidPathError, ScanInterruptedError
 from .core.scanner import DiskScanner
 from .core.types import ScanOptions
-from .utils.formatters import format_size
 from .ui.formatters import TableFormatter
 from .ui.textual_app import run_textual_ui
-
+from .utils.formatters import format_size
 
 # Configure logging
 logging.basicConfig(

@@ -1,8 +1,8 @@
 """Thread-safe buffer implementation for metrics exchange."""
 
-import array
 import threading
 from typing import Generic, Optional, TypeVar
+
 from .types import MetricsSnapshot
 
 T = TypeVar('T')

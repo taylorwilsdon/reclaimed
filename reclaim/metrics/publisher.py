@@ -3,8 +3,8 @@
 import logging
 import threading
 import time
-from typing import Dict, List, Optional, Set
 import weakref
+from typing import List, Optional, Set
 
 from .buffer import MetricsBuffer
 from .subscriber import MetricsSubscriber

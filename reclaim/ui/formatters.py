@@ -9,9 +9,7 @@ from rich.text import Text
 
 from ..core.types import FileInfo
 from ..utils.formatters import format_size
-from .styles import (
-    BASE0, BASE1, BLUE, CYAN, GREEN, RED, YELLOW
-)
+from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, YELLOW
 
 
 class TableFormatter:

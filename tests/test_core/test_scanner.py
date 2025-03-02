@@ -1,8 +1,10 @@
+
 import pytest
-from pathlib import Path
+
+from reclaim.core.errors import InvalidPathError, ScanInterruptedError
 from reclaim.core.scanner import DiskScanner
 from reclaim.core.types import ScanOptions, ScanResult
-from reclaim.core.errors import InvalidPathError, ScanInterruptedError
+
 
 def test_scanner_initialization():
     """Test scanner initialization with default and custom options."""
@@ -66,7 +68,6 @@ def test_max_files_limit(tmp_path):
     assert result.files[0].size > result.files[1].size
 
 
-@pytest.mark.asyncio
 async def test_scan_async(sample_file_structure):
     """Test asynchronous scanning functionality."""
     scanner = DiskScanner()

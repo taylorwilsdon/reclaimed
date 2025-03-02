@@ -2,19 +2,19 @@
 
 from ._version import __version__
 from .core import (
-    DiskScanner,
-    FileInfo,
-    ScanOptions,
-    ScanProgress,
-    ScanResult,
     AccessError,
+    DiskScanner,
     DiskScannerError,
+    FileInfo,
     InvalidPathError,
     PermissionError,
     ScanInterruptedError,
+    ScanOptions,
+    ScanProgress,
+    ScanResult,
 )
-from .utils.formatters import format_size, parse_size
 from .io import FileSystemOperations
+from .utils.formatters import format_size, parse_size
 
 __all__ = [
     '__version__',

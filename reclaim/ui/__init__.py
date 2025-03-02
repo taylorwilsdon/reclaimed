@@ -2,11 +2,25 @@
 
 from .formatters import TableFormatter
 from .styles import (
-    BASE03, BASE02, BASE01, BASE00, BASE0, BASE1, BASE2, BASE3,
-    YELLOW, ORANGE, RED, MAGENTA, VIOLET, BLUE, CYAN, GREEN,
-    TEXTUAL_CSS
+    BASE0,
+    BASE00,
+    BASE01,
+    BASE02,
+    BASE03,
+    BASE1,
+    BASE2,
+    BASE3,
+    BLUE,
+    CYAN,
+    GREEN,
+    MAGENTA,
+    ORANGE,
+    RED,
+    TEXTUAL_CSS,
+    VIOLET,
+    YELLOW,
 )
-from .textual_app import run_textual_ui, ReclaimApp
+from .textual_app import ReclaimApp, run_textual_ui
 
 __all__ = [
     'TableFormatter',

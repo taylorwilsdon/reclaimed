@@ -1,7 +1,5 @@
 """Core disk scanning functionality."""
 
-from .scanner import DiskScanner
-from .types import FileInfo, ScanOptions, ScanProgress, ScanResult
 from .errors import (
     AccessError,
     DiskScannerError,
@@ -9,6 +7,8 @@ from .errors import (
     PermissionError,
     ScanInterruptedError,
 )
+from .scanner import DiskScanner
+from .types import FileInfo, ScanOptions, ScanProgress, ScanResult
 
 __all__ = [
     'DiskScanner',

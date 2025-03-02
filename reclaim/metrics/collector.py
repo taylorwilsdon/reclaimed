@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from typing import Dict, Optional
+
 import psutil
 
 from .buffer import AtomicCounter, MetricsBuffer
