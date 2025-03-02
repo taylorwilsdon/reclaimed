@@ -1,13 +1,13 @@
-# Contributing to Reclaim
+# Contributing to reclaimed
 
-Thank you for your interest in contributing to Reclaim! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to reclaimed! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/yourusername/reclaim.git
-   cd reclaim
+   git clone https://github.com/yourusername/reclaimed.git
+   cd reclaimed
    ```
 
 2. Install dependencies:
@@ -109,4 +109,4 @@ The GitHub Action will automatically:
 
 Feel free to open an issue for any questions or concerns.
 
-Thank you for contributing to Reclaim! 🌟
+Thank you for contributing to reclaimed! 🌟

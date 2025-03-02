@@ -1,4 +1,4 @@
-"""User interface components for reclaim."""
+"""User interface components for reclaimed"""
 
 from .formatters import TableFormatter
 from .styles import (
@@ -20,12 +20,12 @@ from .styles import (
     VIOLET,
     YELLOW,
 )
-from .textual_app import ReclaimApp, run_textual_ui
+from .textual_app import ReclaimedApp, run_textual_ui
 
 __all__ = [
     "TableFormatter",
     "run_textual_ui",
-    "ReclaimApp",
+    "ReclaimedApp",
     "BASE03",
     "BASE02",
     "BASE01",

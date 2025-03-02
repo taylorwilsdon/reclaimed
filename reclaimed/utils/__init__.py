@@ -1,4 +1,4 @@
-"""Utility functions for reclaim."""
+"""Utility functions for reclaimed."""
 
 from .formatters import SizeFormatter, format_size, parse_size
 

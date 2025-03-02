@@ -1,4 +1,4 @@
-"""File system operations for reclaim."""
+"""File system operations for reclaimed."""
 
 from .filesystem import FileSystemOperations
 
