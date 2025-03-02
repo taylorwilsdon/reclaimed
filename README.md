@@ -104,15 +104,21 @@ hatch run lint
 hatch build
 
 # Run with interactive UI
-python -m disk_scanner.cli /path/to/scan -i
+python -m reclaimed /path/to/scan
 ```
 
 ## Interactive Mode
 
-Launch the interactive mode with the `-i` or `--interactive` flag:
+The interactive mode launches automatically, or with the `-i` or `--interactive` flag:
 
 ```bash
 reclaim ~/Documents -i
+```
+
+Non-interactive mode can be enabled (prints a simpler output with very low overhead) with `--no-interactive`
+
+```bash
+reclaim ~/Documents --no-interactive
 ```
 
 ### Keyboard Shortcuts
