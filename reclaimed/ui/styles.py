@@ -15,7 +15,7 @@ RED = "#dc322f"
 MAGENTA = "#d33682"
 VIOLET = "#6c71c4"
 BLUE = "#268bd2"
-CYAN = "#2aa198"
+CYAN = "#6b9698"
 GREEN = "#859900"
 
 # CSS styles for Textual UI
@@ -35,7 +35,7 @@ $red: #dc322f;
 $magenta: #d33682;
 $violet: #6c71c4;
 $blue: #268bd2;
-$cyan: #2aa198;
+$cyan: #6b9698;
 $green: #859900;
 
 
