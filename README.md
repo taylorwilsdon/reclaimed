@@ -1,4 +1,4 @@
-# reclaim 🌟
+# reclaimed 🌟
 
 A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
 
@@ -28,14 +28,14 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 ### Using pip
 
 ```bash
-pip install reclaim
+pip install reclaimed
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/taylorwilsdon/reclaim.git
-cd reclaim
+git clone https://github.com/taylorwilsdon/reclaimed.git
+cd reclaimed
 pip install -r requirements.txt
 hatch shell
 ```
@@ -44,16 +44,16 @@ hatch shell
 
 Basic usage:
 ```bash
-reclaim ~/Documents
+reclaimed ~/Documents
 ```
 
 Advanced options:
 ```bash
 # Show more results
-reclaim ~/Documents --files 20 --dirs 15
+reclaimed ~/Documents --files 20 --dirs 15
 
 # Save results to JSON
-reclaim ~/Documents --output results.json
+reclaimed ~/Documents --output results.json
 ```
 
 ### Options
