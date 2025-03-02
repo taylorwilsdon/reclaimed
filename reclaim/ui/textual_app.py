@@ -656,8 +656,8 @@ class ReclaimApp(App):
         """Check header visibility after a delay."""
         try:
             # Debug header visibility
-            self.query_one("#dirs-section-header")
-            self.query_one("#files-section-header")
+            dirs_header = self.query_one("#dirs-section-header")
+            files_header = self.query_one("#files-section-header")
             print(f"DEBUG: dirs_header visible: {dirs_header.styles.display}")
             print(f"DEBUG: files_header visible: {files_header.styles.display}")
             print(f"DEBUG: dirs_header text: {dirs_header.render()}")
