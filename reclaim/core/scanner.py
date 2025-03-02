@@ -74,8 +74,6 @@ class DiskScanner:
             paths_chunk: List[Path] = []
 
             # Pre-populate cache with any existing entries for better performance
-            cached_dirs = self._cache.get_all_cached_dirs()
-
             # Track when we last calculated directory sizes
             last_dir_calc_time = 0
             # Start with frequent calculations, then reduce frequency based on file count
@@ -126,10 +124,12 @@ class DiskScanner:
                                 largest_dirs = self._get_largest_dirs(root_path)
                                 last_dir_calc_time = current_time
 
-                                # Calculate a rough progress estimate based on time elapsed
-                                # This is not accurate for total completion but provides visual feedback
-                                elapsed_time = time.time() - last_dir_calc_time
-                                progress_estimate = min(0.95, self._file_count / (self._file_count + 1000))
+                                # Calculate a rough progress estimate
+                                # Not accurate for total completion but provides visual feedback
+                                progress_estimate = min(
+                                    0.95, 
+                                    self._file_count / (self._file_count + 1000)
+                                )
 
                                 # Yield progress
                                 yield ScanProgress(
@@ -158,7 +158,7 @@ class DiskScanner:
             )
 
         except KeyboardInterrupt:
-            raise ScanInterruptedError()
+            raise ScanInterruptedError() from None
 
     def scan(self, root_path: Path) -> ScanResult:
         """Synchronous version of scan_async.

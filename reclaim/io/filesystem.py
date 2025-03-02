@@ -41,11 +41,11 @@ class FileSystemOperations:
             # Use os.stat directly for better performance
             return os.stat(path).st_size
         except FileNotFoundError as e:
-            raise FileNotFoundError(path, e)
+            raise FileNotFoundError(path, e) from e
         except PermissionError as e:
-            raise PermissionError(path, e)
+            raise PermissionError(path, e) from e
         except OSError as e:
-            raise IOError(path, str(e), e)
+            raise IOError(path, str(e), e) from e
 
     @staticmethod
     def is_readable(path: Path) -> bool:

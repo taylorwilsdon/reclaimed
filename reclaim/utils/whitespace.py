@@ -98,8 +98,11 @@ if __name__ == "__main__":
                         help="Root directory to search for files (default: repository root)")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Print information about modified files")
-    parser.add_argument("--staged-only", action="store_true",
-                        help="Only process files staged for commit")
+    parser.add_argument(
+        "--staged-only", 
+        action="store_true",
+        help="Only process files staged for commit"
+    )
 
     args = parser.parse_args()
 

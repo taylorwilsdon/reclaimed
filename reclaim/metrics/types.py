@@ -96,7 +96,11 @@ class MetricsSnapshot:
             'transfer_rate': self.transfer_rate,
             'memory_usage': self.memory_usage,
             'cpu_usage': self.cpu_usage,
-            'operation_timings': dict(self.operation_timings) if self.operation_timings else {}
+            'operation_timings': (
+                dict(self.operation_timings) 
+                if self.operation_timings 
+                else {}
+            )
         }
 
         # Update with new values

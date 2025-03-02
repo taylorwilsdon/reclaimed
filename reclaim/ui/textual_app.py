@@ -579,7 +579,8 @@ class ReclaimApp(App):
             row = table.cursor_coordinate.row
             if row < len(table.rows):
                 # Get the path from the row key
-                row_data = table.get_row_at(row)
+                # Get row data (unused but kept for potential future use)
+                table.get_row_at(row)
 
                 # In the current version of Textual, we need to access the key differently
                 # The key is stored when we add the row, so we need to look it up in our data
@@ -654,8 +655,9 @@ class ReclaimApp(App):
     def check_header_visibility(self) -> None:
         """Check header visibility after a delay."""
         try:
-            dirs_header = self.query_one("#dirs-section-header")
-            files_header = self.query_one("#files-section-header")
+            # Debug header visibility
+            self.query_one("#dirs-section-header")
+            self.query_one("#files-section-header")
             print(f"DEBUG: dirs_header visible: {dirs_header.styles.display}")
             print(f"DEBUG: files_header visible: {files_header.styles.display}")
             print(f"DEBUG: dirs_header text: {dirs_header.render()}")

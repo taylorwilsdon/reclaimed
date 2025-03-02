@@ -68,7 +68,7 @@ class SizeFormatter:
             value = float(parts[0])
             unit = parts[1]
         except ValueError:
-            raise ValueError(f"Invalid size format: {size_str}")
+            raise ValueError(f"Invalid size format: {size_str}") from None
 
         # Find unit multiplier
         for threshold, unit_name in cls.UNITS:

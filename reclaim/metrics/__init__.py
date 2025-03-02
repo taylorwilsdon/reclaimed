@@ -1,7 +1,7 @@
 """High-performance metrics system for disk scanning operations."""
 
 import logging
-from typing import Optional, Type
+from typing import Optional
 
 from .buffer import MetricsBuffer
 from .collector import MetricsCollector
