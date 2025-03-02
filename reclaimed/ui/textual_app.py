@@ -1,4 +1,4 @@
-"""Textual UI for reclaim with interactive file/folder management."""
+"""Textual UI for reclaimed with interactive file/folder management."""
 
 import asyncio
 import os
@@ -111,8 +111,8 @@ class SortOptions(ModalScreen):
         self.dismiss(sort_option)
 
 
-class ReclaimApp(App):
-    """Textual app for reclaim with interactive file management."""
+class ReclaimedApp(App):
+    """Textual app for reclaimed with interactive file management."""
 
     CSS = TEXTUAL_CSS
 
@@ -151,7 +151,7 @@ class ReclaimApp(App):
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
         yield Header(show_clock=True)
-        yield Static("[bold]Reclaim[/bold]", id="title")
+        yield Static("[bold]Reclaimed[/bold]", id="title")
 
         with Container(id="main-container"):
             # Status bar with scan info
@@ -605,7 +605,7 @@ class ReclaimApp(App):
     def action_help(self) -> None:
         """Show help information."""
         help_text = """
-        [#93a1a1]Reclaim Help[/]
+        [#93a1a1]Reclaimed Help[/]
 
         [#268bd2]Navigation:[/]
         - Arrow keys: Navigate within a table
@@ -697,5 +697,5 @@ def run_textual_ui(
 
     options = ScanOptions(max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_dirs)
 
-    app = ReclaimApp(path, options)
+    app = ReclaimedApp(path, options)
     app.run()

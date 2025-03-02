@@ -1,4 +1,4 @@
-"""Command-line interface for reclaim."""
+"""Command-line interface for reclaimed"""
 
 import logging
 import sys

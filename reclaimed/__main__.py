@@ -1,4 +1,4 @@
-"""Main entry point for the reclaim package."""
+"""Main entry point for the reclaimed package."""
 
 from .cli import main
 
