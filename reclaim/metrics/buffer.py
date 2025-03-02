@@ -5,7 +5,7 @@ from typing import Generic, Optional, TypeVar
 
 from .types import MetricsSnapshot
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class AtomicCounter:

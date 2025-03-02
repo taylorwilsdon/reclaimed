@@ -28,9 +28,7 @@ class MetricsSubscriber(ABC):
         """
         pass
 
-    def set_error_handler(
-        self, handler: Optional[Callable[[MetricsError], None]]
-    ) -> None:
+    def set_error_handler(self, handler: Optional[Callable[[MetricsError], None]]) -> None:
         """Set the error handler for this subscriber.
 
         Args:
@@ -81,8 +79,7 @@ class BaseMetricsSubscriber(MetricsSubscriber):
                 self.process_metrics(metrics)
         except Exception as e:
             error = MetricsError.create(
-                error_type="ProcessingError",
-                message=f"Error processing metrics update: {str(e)}"
+                error_type="ProcessingError", message=f"Error processing metrics update: {str(e)}"
             )
             self._handle_error(error)
 
@@ -157,7 +154,7 @@ class LoggingMetricsSubscriber(BaseMetricsSubscriber):
             metrics.file_count,
             metrics.dir_count,
             metrics.total_bytes,
-            metrics.scan_rate
+            metrics.scan_rate,
         )
 
 
@@ -167,7 +164,7 @@ class CallbackMetricsSubscriber(BaseMetricsSubscriber):
     def __init__(
         self,
         callback: Callable[[MetricsSnapshot], None],
-        error_handler: Optional[Callable[[MetricsError], None]] = None
+        error_handler: Optional[Callable[[MetricsError], None]] = None,
     ):
         """Initialize the callback subscriber.
 

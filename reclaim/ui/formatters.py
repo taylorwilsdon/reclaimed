@@ -53,16 +53,9 @@ class TableFormatter:
                 rel_path = file_info.path
 
             storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
-            storage_cell = Text(
-                storage_status,
-                style=BLUE if file_info.is_icloud else GREEN
-            )
+            storage_cell = Text(storage_status, style=BLUE if file_info.is_icloud else GREEN)
 
-            table.add_row(
-                format_size(file_info.size),
-                storage_cell,
-                str(rel_path)
-            )
+            table.add_row(format_size(file_info.size), storage_cell, str(rel_path))
 
         return table
 
@@ -96,16 +89,9 @@ class TableFormatter:
                 rel_path = dir_info.path
 
             storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
-            storage_cell = Text(
-                storage_status,
-                style=BLUE if dir_info.is_icloud else GREEN
-            )
+            storage_cell = Text(storage_status, style=BLUE if dir_info.is_icloud else GREEN)
 
-            table.add_row(
-                format_size(dir_info.size),
-                storage_cell,
-                str(rel_path)
-            )
+            table.add_row(format_size(dir_info.size), storage_cell, str(rel_path))
 
         return table
 
@@ -137,30 +123,19 @@ class TableFormatter:
             issues_by_type.setdefault(error, []).append(path)
 
         for error_type, paths in issues_by_type.items():
-            table.add_row(
-                f"[{YELLOW}]•[/]",
-                f"[{YELLOW}]{error_type}[/] ({len(paths)} items)"
-            )
+            table.add_row(f"[{YELLOW}]•[/]", f"[{YELLOW}]{error_type}[/] ({len(paths)} items)")
             # Show up to three examples per error type
             for sample in sorted(paths)[:3]:
-                table.add_row(
-                    "  [dim]>[/dim]",
-                    f"[dim]{sample.name}[/dim]"
-                )
+                table.add_row("  [dim]>[/dim]", f"[dim]{sample.name}[/dim]")
             if len(paths) > 3:
                 table.add_row(
-                    "  [dim]>[/dim]",
-                    f"[dim]...and {len(paths) - 3} more similar items[/dim]"
+                    "  [dim]>[/dim]", f"[dim]...and {len(paths) - 3} more similar items[/dim]"
                 )
 
         return table
 
     def print_scan_summary(
-        self,
-        files: List[FileInfo],
-        dirs: List[FileInfo],
-        root_path: Path,
-        issues: dict[Path, str]
+        self, files: List[FileInfo], dirs: List[FileInfo], root_path: Path, issues: dict[Path, str]
     ) -> None:
         """Print complete scan results.
 

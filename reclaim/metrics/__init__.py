@@ -30,7 +30,7 @@ class MetricsSystem:
         collector: Optional[MetricsCollector] = None,
         publisher: Optional[MetricsPublisher] = None,
         buffer_size: int = 1000,
-        update_frequency: float = 1/30
+        update_frequency: float = 1 / 30,
     ):
         """Initialize the metrics system.
 
@@ -42,8 +42,7 @@ class MetricsSystem:
         """
         self._collector = collector or MetricsCollector(buffer_size)
         self._publisher = publisher or MetricsPublisher(
-            update_frequency=update_frequency,
-            buffer_size=buffer_size
+            update_frequency=update_frequency, buffer_size=buffer_size
         )
 
     def start(self) -> None:
@@ -86,7 +85,7 @@ class MetricsSystem:
         self._collector.reset()
         self._publisher.reset_stats()
 
-    def __enter__(self) -> 'MetricsSystem':
+    def __enter__(self) -> "MetricsSystem":
         """Context manager entry."""
         self.start()
         return self
@@ -98,9 +97,7 @@ class MetricsSystem:
 
 # Convenience function to create a metrics system with a logging subscriber
 def create_logging_metrics(
-    log_level: int = logging.INFO,
-    buffer_size: int = 1000,
-    update_frequency: float = 1/30
+    log_level: int = logging.INFO, buffer_size: int = 1000, update_frequency: float = 1 / 30
 ) -> MetricsSystem:
     """Create a metrics system with a logging subscriber.
 
@@ -112,40 +109,33 @@ def create_logging_metrics(
     Returns:
         Configured MetricsSystem instance
     """
-    metrics = MetricsSystem(
-        buffer_size=buffer_size,
-        update_frequency=update_frequency
-    )
+    metrics = MetricsSystem(buffer_size=buffer_size, update_frequency=update_frequency)
     metrics.add_subscriber(LoggingMetricsSubscriber(log_level))
     return metrics
 
 
 __all__ = [
     # Main classes
-    'MetricsSystem',
-    'MetricsCollector',
-    'MetricsPublisher',
-    'MetricsBuffer',
-
+    "MetricsSystem",
+    "MetricsCollector",
+    "MetricsPublisher",
+    "MetricsBuffer",
     # Subscriber classes
-    'MetricsSubscriber',
-    'BaseMetricsSubscriber',
-    'LoggingMetricsSubscriber',
-    'CallbackMetricsSubscriber',
-
+    "MetricsSubscriber",
+    "BaseMetricsSubscriber",
+    "LoggingMetricsSubscriber",
+    "CallbackMetricsSubscriber",
     # Data types
-    'MetricsSnapshot',
-    'MetricsError',
-    'OperationTiming',
-    'MetricType',
-
+    "MetricsSnapshot",
+    "MetricsError",
+    "OperationTiming",
+    "MetricType",
     # Utilities
-    'RateCalculator',
-    'ResourceMonitor',
-    'PerformanceTimer',
-    'cleanup_resources',
-    'format_rate',
-
+    "RateCalculator",
+    "ResourceMonitor",
+    "PerformanceTimer",
+    "cleanup_resources",
+    "format_rate",
     # Factory functions
-    'create_logging_metrics',
+    "create_logging_metrics",
 ]

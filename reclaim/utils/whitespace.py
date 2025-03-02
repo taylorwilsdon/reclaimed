@@ -15,7 +15,7 @@ def get_git_tracked_python_files(root_dir: Path) -> List[Path]:
             ["git", "-C", str(root_dir), "ls-files", "*.py"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
 
         # Convert the output to a list of Path objects
@@ -31,7 +31,7 @@ def _fallback_get_python_files(root_dir: Path) -> List[Path]:
     python_files = []
     for root, _, files in os.walk(root_dir):
         for file in files:
-            if file.endswith('.py'):
+            if file.endswith(".py"):
                 python_files.append(Path(root) / file)
     return python_files
 
@@ -42,18 +42,18 @@ def trim_trailing_whitespace(file_path: Path) -> bool:
 
     Returns True if changes were made, False otherwise.
     """
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
     # Check if there are any lines with trailing whitespace
-    has_trailing_whitespace = any(re.search(r'[ \t]+$', line) for line in lines)
+    has_trailing_whitespace = any(re.search(r"[ \t]+$", line) for line in lines)
     if not has_trailing_whitespace:
         return False
 
     # Remove trailing whitespace
-    trimmed_lines = [re.sub(r'[ \t]+$', '', line) for line in lines]
+    trimmed_lines = [re.sub(r"[ \t]+$", "", line) for line in lines]
 
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.writelines(trimmed_lines)
 
     return True
@@ -69,7 +69,7 @@ def trim_all_files(root_dir: Optional[Path] = None, verbose: bool = False) -> in
         # Find the repository root (assuming this file is in the repo)
         current_file = Path(__file__)
         root_dir = current_file
-        while not (root_dir / '.git').exists():
+        while not (root_dir / ".git").exists():
             root_dir = root_dir.parent
             if root_dir == root_dir.parent:  # Reached filesystem root
                 root_dir = current_file.parent.parent
@@ -93,15 +93,20 @@ def trim_all_files(root_dir: Optional[Path] = None, verbose: bool = False) -> in
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Trim trailing whitespace from git-tracked Python files")
-    parser.add_argument("--path", type=Path, default=None,
-                        help="Root directory to search for files (default: repository root)")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Print information about modified files")
+    parser = argparse.ArgumentParser(
+        description="Trim trailing whitespace from git-tracked Python files"
+    )
     parser.add_argument(
-        "--staged-only", 
-        action="store_true",
-        help="Only process files staged for commit"
+        "--path",
+        type=Path,
+        default=None,
+        help="Root directory to search for files (default: repository root)",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Print information about modified files"
+    )
+    parser.add_argument(
+        "--staged-only", action="store_true", help="Only process files staged for commit"
     )
 
     args = parser.parse_args()
@@ -110,7 +115,7 @@ if __name__ == "__main__":
         # Get only staged Python files
         try:
             root_dir = Path(__file__)
-            while not (root_dir / '.git').exists():
+            while not (root_dir / ".git").exists():
                 root_dir = root_dir.parent
                 if root_dir == root_dir.parent:
                     root_dir = None
@@ -118,8 +123,19 @@ if __name__ == "__main__":
 
             if root_dir:
                 result = subprocess.run(
-                    ["git", "-C", str(root_dir), "diff", "--cached", "--name-only", "--diff-filter=ACMR", "*.py"],
-                    capture_output=True, text=True, check=True
+                    [
+                        "git",
+                        "-C",
+                        str(root_dir),
+                        "diff",
+                        "--cached",
+                        "--name-only",
+                        "--diff-filter=ACMR",
+                        "*.py",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
                 )
                 files = [root_dir / f for f in result.stdout.splitlines() if f.strip()]
 

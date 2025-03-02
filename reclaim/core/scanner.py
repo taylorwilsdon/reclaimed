@@ -84,9 +84,9 @@ class DiskScanner:
                     try:
                         # Create file info directly with the size we already have
                         is_icloud = (
-                            self.options.icloud_base and
-                            self.options.icloud_base in path.parents or
-                            "Mobile Documents" in str(path)
+                            self.options.icloud_base
+                            and self.options.icloud_base in path.parents
+                            or "Mobile Documents" in str(path)
                         )
                         file_info = FileInfo(path, size, is_icloud)
 
@@ -94,7 +94,11 @@ class DiskScanner:
                         self._update_dir_sizes(path, size, is_icloud)
 
                         # Insert file in sorted position if it's large enough
-                        if not largest_files or len(largest_files) < self.options.max_files or size > largest_files[-1].size:
+                        if (
+                            not largest_files
+                            or len(largest_files) < self.options.max_files
+                            or size > largest_files[-1].size
+                        ):
                             self._insert_sorted(largest_files, file_info, self.options.max_files)
                             # No need to manually trim the list as _insert_sorted now handles this
 
@@ -127,17 +131,16 @@ class DiskScanner:
                                 # Calculate a rough progress estimate
                                 # Not accurate for total completion but provides visual feedback
                                 progress_estimate = min(
-                                    0.95, 
-                                    self._file_count / (self._file_count + 1000)
+                                    0.95, self._file_count / (self._file_count + 1000)
                                 )
 
                                 # Yield progress
                                 yield ScanProgress(
-                                    progress=progress_estimate,  # Use our estimate for visual feedback
-                                    files=largest_files[:self.options.max_files],
-                                    dirs=largest_dirs[:self.options.max_dirs],
+                                    progress=progress_estimate,
+                                    files=largest_files[: self.options.max_files],
+                                    dirs=largest_dirs[: self.options.max_dirs],
                                     scanned=self._file_count,
-                                    total_size=self._total_size
+                                    total_size=self._total_size,
                                 )
 
                                 # Allow other tasks to run
@@ -151,10 +154,10 @@ class DiskScanner:
             # Final progress update
             yield ScanProgress(
                 progress=1.0,
-                files=largest_files[:self.options.max_files],
-                dirs=largest_dirs[:self.options.max_dirs],
+                files=largest_files[: self.options.max_files],
+                dirs=largest_dirs[: self.options.max_dirs],
                 scanned=self._file_count,
-                total_size=self._total_size
+                total_size=self._total_size,
             )
 
         except KeyboardInterrupt:
@@ -191,9 +194,9 @@ class DiskScanner:
                     try:
                         # Create file info directly with the size we already have
                         is_icloud = (
-                            self.options.icloud_base and
-                            self.options.icloud_base in path.parents or
-                            "Mobile Documents" in str(path)
+                            self.options.icloud_base
+                            and self.options.icloud_base in path.parents
+                            or "Mobile Documents" in str(path)
                         )
                         file_info = FileInfo(path, size, is_icloud)
 
@@ -214,15 +217,15 @@ class DiskScanner:
             dirs = self._get_largest_dirs(root_path)
 
             return ScanResult(
-                files=files[:self.options.max_files],
-                directories=dirs[:self.options.max_dirs],
+                files=files[: self.options.max_files],
+                directories=dirs[: self.options.max_dirs],
                 total_size=self._total_size,
                 files_scanned=self._file_count,
-                access_issues=dict(self._access_issues)
+                access_issues=dict(self._access_issues),
             )
 
         except KeyboardInterrupt:
-            raise ScanInterruptedError()
+            raise ScanInterruptedError() from None
 
     async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int]]:
         """Asynchronously walk directory tree with adaptive traversal.
@@ -268,7 +271,8 @@ class DiskScanner:
                                         is_small_directory = False
 
                                     # For small directories, don't yield to avoid overhead
-                                    # For larger directories, yield occasionally to keep UI responsive
+                                    # For larger directories, yield occasionally to keep
+                                    # UI responsive
                                     if not is_small_directory and processed_count % 500 == 0:
                                         await asyncio.sleep(0)
                                 except (OSError, AttributeError) as e:
@@ -334,7 +338,7 @@ class DiskScanner:
             is_icloud: Whether the file is in iCloud
         """
         # Initialize update counter if it doesn't exist
-        if not hasattr(self, '_update_counter'):
+        if not hasattr(self, "_update_counter"):
             self._update_counter = 0
         self._update_counter += 1
 
@@ -369,12 +373,15 @@ class DiskScanner:
             List of directories sorted by size
         """
         # Convert directory sizes to FileInfo objects
-        dirs = [FileInfo(p, s, c) for p, (s, c) in self._dir_sizes.items()
-                if p.is_dir() and (p == root or root in p.parents or p in root.parents)]
+        dirs = [
+            FileInfo(p, s, c)
+            for p, (s, c) in self._dir_sizes.items()
+            if p.is_dir() and (p == root or root in p.parents or p in root.parents)
+        ]
 
         # Sort by size (largest first)
         dirs.sort(key=lambda x: x.size, reverse=True)
-        return dirs[:self.options.max_dirs]
+        return dirs[: self.options.max_dirs]
 
     def _handle_access_error(self, path: Path, error: Exception) -> None:
         """Handle and record access errors.

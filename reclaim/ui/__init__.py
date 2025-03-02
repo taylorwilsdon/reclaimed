@@ -23,10 +23,24 @@ from .styles import (
 from .textual_app import ReclaimApp, run_textual_ui
 
 __all__ = [
-    'TableFormatter',
-    'run_textual_ui',
-    'ReclaimApp',
-    'BASE03', 'BASE02', 'BASE01', 'BASE00', 'BASE0', 'BASE1', 'BASE2', 'BASE3',
-    'YELLOW', 'ORANGE', 'RED', 'MAGENTA', 'VIOLET', 'BLUE', 'CYAN', 'GREEN',
-    'TEXTUAL_CSS'
+    "TableFormatter",
+    "run_textual_ui",
+    "ReclaimApp",
+    "BASE03",
+    "BASE02",
+    "BASE01",
+    "BASE00",
+    "BASE0",
+    "BASE1",
+    "BASE2",
+    "BASE3",
+    "YELLOW",
+    "ORANGE",
+    "RED",
+    "MAGENTA",
+    "VIOLET",
+    "BLUE",
+    "CYAN",
+    "GREEN",
+    "TEXTUAL_CSS",
 ]

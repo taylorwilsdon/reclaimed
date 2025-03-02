@@ -1,4 +1,3 @@
-
 import pytest
 
 from reclaim.core.errors import InvalidPathError, ScanInterruptedError
@@ -113,9 +112,7 @@ def test_access_issues(mock_filesystem):
 
 def test_icloud_detection(tmp_path):
     """Test iCloud file detection."""
-    scanner = DiskScanner(options=ScanOptions(
-        icloud_base=tmp_path / "Library/Mobile Documents"
-    ))
+    scanner = DiskScanner(options=ScanOptions(icloud_base=tmp_path / "Library/Mobile Documents"))
 
     # Create mock iCloud path
     icloud_path = tmp_path / "Library/Mobile Documents/test.txt"
@@ -142,11 +139,12 @@ def test_skip_dirs(mock_filesystem):
 
 def test_scan_interruption(mock_filesystem, monkeypatch):
     """Test handling of scan interruption."""
+
     def raise_keyboard_interrupt(*args, **kwargs):
         raise KeyboardInterrupt()
 
     # Patch os.scandir to raise KeyboardInterrupt
-    monkeypatch.setattr('os.scandir', raise_keyboard_interrupt)
+    monkeypatch.setattr("os.scandir", raise_keyboard_interrupt)
 
     scanner = DiskScanner()
     with pytest.raises(ScanInterruptedError):

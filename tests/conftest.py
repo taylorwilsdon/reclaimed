@@ -26,7 +26,7 @@ def sample_file_structure(temp_dir):
     # Create sample files with known sizes
     (dir1 / "file1.txt").write_text("Hello" * 100)  # 500 bytes
     (dir1 / "file2.txt").write_text("World" * 200)  # 1000 bytes
-    (dir2 / "file3.txt").write_text("Test" * 300)   # 1200 bytes
+    (dir2 / "file3.txt").write_text("Test" * 300)  # 1200 bytes
 
     return temp_dir
 
@@ -53,14 +53,10 @@ def mock_filesystem(temp_dir):
                 "main.py": "print('hello')",
                 "utils": {
                     "helper.py": "def help(): pass",
-                }
+                },
             },
-            "tests": {
-                "test_main.py": "def test_main(): pass"
-            },
-            "data": {
-                "sample.txt": "sample data"
-            }
+            "tests": {"test_main.py": "def test_main(): pass"},
+            "data": {"sample.txt": "sample data"},
         }
     }
 

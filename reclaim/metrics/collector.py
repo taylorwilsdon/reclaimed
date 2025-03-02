@@ -45,9 +45,7 @@ class MetricsCollector:
         # Update thread
         self._should_stop = threading.Event()
         self._update_thread = threading.Thread(
-            target=self._update_loop,
-            name="MetricsCollector",
-            daemon=True
+            target=self._update_loop, name="MetricsCollector", daemon=True
         )
         self._update_thread.start()
 
@@ -146,9 +144,7 @@ class MetricsCollector:
         # Get completed operation timings
         with self._timings_lock:
             timings = {
-                op.operation_name: op
-                for op in self._operation_timings.values()
-                if op.is_complete
+                op.operation_name: op for op in self._operation_timings.values() if op.is_complete
             }
 
         return MetricsSnapshot.create(
@@ -159,7 +155,7 @@ class MetricsCollector:
             transfer_rate=transfer_rate,
             memory_usage=memory_usage,
             cpu_usage=cpu_usage,
-            operation_timings=timings
+            operation_timings=timings,
         )
 
     def _update_loop(self) -> None:
@@ -185,6 +181,7 @@ class MetricsCollector:
             except Exception:
                 # Log error but keep running
                 import logging
+
                 logging.exception("Error in metrics update loop")
 
     def stop(self) -> None:
@@ -216,7 +213,7 @@ class MetricsCollector:
         """
         return self._buffer
 
-    def __enter__(self) -> 'MetricsCollector':
+    def __enter__(self) -> "MetricsCollector":
         """Context manager entry."""
         return self
 

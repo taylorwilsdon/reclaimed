@@ -15,10 +15,7 @@ from .ui.textual_app import run_textual_ui
 from .utils.formatters import format_size
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -54,45 +51,41 @@ def handle_scan_error(error: Exception, console: Console) -> int:
 @click.argument(
     "path",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    default="."
+    default=".",
 )
 @click.option(
     "--max-files",
     "-f",
     default=10,
     help="Maximum number of largest files to show",
-    show_default=True
+    show_default=True,
 )
 @click.option(
     "--max-dirs",
     "-d",
     default=10,
     help="Maximum number of largest directories to show",
-    show_default=True
+    show_default=True,
 )
 @click.option(
     "--skip-dirs",
     "-s",
     multiple=True,
-    help="Additional directories to skip (can be specified multiple times)"
+    help="Additional directories to skip (can be specified multiple times)",
 )
-@click.option(
-    "--debug",
-    is_flag=True,
-    help="Enable debug logging"
-)
+@click.option("--debug", is_flag=True, help="Enable debug logging")
 @click.option(
     "--interactive/--no-interactive",
     "-i",
     default=True,
-    help="Use interactive TUI mode (default) or simple text output"
+    help="Use interactive TUI mode (default) or simple text output",
 )
 @click.option(
     "--output",
     "-o",
     type=click.Path(path_type=Path),
     default=None,
-    help="Path to save the JSON scan results"
+    help="Path to save the JSON scan results",
 )
 def main(
     path: Path,
@@ -101,7 +94,7 @@ def main(
     skip_dirs: tuple[str, ...],
     debug: bool,
     interactive: bool,
-    output: Path
+    output: Path,
 ) -> None:
     """Analyze disk space usage and find large files/directories.
 
@@ -127,11 +120,7 @@ def main(
             if skip_dirs:
                 skip_list.extend(skip_dirs)
 
-            options = ScanOptions(
-                max_files=max_files,
-                max_dirs=max_dirs,
-                skip_dirs=skip_list
-            )
+            options = ScanOptions(max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_list)
 
             scanner = DiskScanner(options, console)
 
@@ -140,10 +129,7 @@ def main(
 
             # Display results
             formatter.print_scan_summary(
-                result.files,
-                result.directories,
-                path,
-                result.access_issues
+                result.files, result.directories, path, result.access_issues
             )
 
             # Show final stats

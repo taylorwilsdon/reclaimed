@@ -103,9 +103,9 @@ class FileSystemOperations:
             for entry in os.scandir(path):
                 yield entry
         except PermissionError as e:
-            raise PermissionError(path, e)
+            raise PermissionError(path, e) from e
         except OSError as e:
-            raise IOError(path, str(e), e)
+            raise IOError(path, str(e), e) from e
 
     @classmethod
     def get_path_info(cls, path: Path) -> Tuple[int, bool, bool]:
@@ -126,10 +126,10 @@ class FileSystemOperations:
             return (
                 stat_result.st_size,
                 stat.S_ISREG(stat_result.st_mode),
-                stat.S_ISDIR(stat_result.st_mode)
+                stat.S_ISDIR(stat_result.st_mode),
             )
         except OSError as e:
-            raise AccessError(path, f"Failed to get path info: {e}", e)
+            raise AccessError(path, f"Failed to get path info: {e}", e) from e
 
     @classmethod
     def is_symlink(cls, path: Path) -> bool:
@@ -172,6 +172,7 @@ class FileSystemOperations:
         """
         try:
             import pwd  # Unix-specific
+
             # Use os.stat directly for better performance
             stat_info = os.stat(path)
             return pwd.getpwuid(stat_info.st_uid).pw_name
@@ -196,7 +197,7 @@ class FileSystemOperations:
         test_path_lower = os.path.join(path, "test_case_sensitive")
 
         try:
-            with open(test_path, 'w'):
+            with open(test_path, "w"):
                 pass
             is_sensitive = not os.path.exists(test_path_lower)
             os.unlink(test_path)

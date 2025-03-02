@@ -60,7 +60,9 @@ class ConfirmationDialog(ModalScreen):
     def compose(self) -> ComposeResult:
         """Compose the confirmation dialog."""
         with Container(id="dialog-container"):
-            yield Static(f"Are you sure you want to delete this {self.item_type}?", id="dialog-title")
+            yield Static(
+                f"Are you sure you want to delete this {self.item_type}?", id="dialog-title"
+            )
             yield Static(f"[bold red]{self.item_path}[/]", id="dialog-path")
 
             if self.is_dir:
@@ -124,11 +126,9 @@ class ReclaimApp(App):
         Binding("delete", "delete_selected", "Delete"),
         Binding("?", "help", "Help"),
     ]
+
     def __init__(
-        self,
-        path: Path,
-        options: ScanOptions,
-        on_exit_callback: Optional[Callable] = None
+        self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
     ):
         """Initialize the app with the path to scan.
 
@@ -182,10 +182,6 @@ class ReclaimApp(App):
         # Initialize progress manager
         self.progress_manager = ProgressManager(self, "main-container")
 
-        # Debug header visibility
-        dirs_header = self.query_one("#dirs-section-header")
-        files_header = self.query_one("#files-section-header")
-
         # Start the initial scan
         self.scan_directory()
 
@@ -223,7 +219,7 @@ class ReclaimApp(App):
         )
 
     async def _scan_directory_worker(self):
-        """Worker function that processes the async generator from scan_async with optimized UI updates."""
+        """Worker function to process async generator from scan_async with optimized UI updates."""
         # Track when we last updated the UI
         last_ui_update = 0
         base_ui_update_interval = 0.5
@@ -295,7 +291,7 @@ class ReclaimApp(App):
 
         finally:
             # Always clean up the timer task
-            if hasattr(self, '_timer_task'):
+            if hasattr(self, "_timer_task"):
                 self._timer_task.cancel()
                 try:
                     await self._timer_task
@@ -343,7 +339,7 @@ class ReclaimApp(App):
             "files": self.largest_files,
             "dirs": self.largest_dirs,
             "total_size": self.scanner._total_size,
-            "file_count": self.scanner._file_count
+            "file_count": self.scanner._file_count,
         }
 
     async def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -381,13 +377,10 @@ class ReclaimApp(App):
             count_display.update(f"Files: {file_count:,}")
 
             # Show completion notification
-            self.notify(
-                f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.",
-                timeout=5
-            )
+            self.notify(f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.", timeout=5)
 
             # Clean up timer task
-            if hasattr(self, '_timer_task'):
+            if hasattr(self, "_timer_task"):
                 self._timer_task.cancel()
                 try:
                     await self._timer_task
@@ -439,7 +432,11 @@ class ReclaimApp(App):
             items_changed = False
 
             for i in range(check_count):
-                if i >= len(current_items) or items[i].path != current_items[i].path or items[i].size != current_items[i].size:
+                if (
+                    i >= len(current_items)
+                    or items[i].path != current_items[i].path
+                    or items[i].size != current_items[i].size
+                ):
                     items_changed = True
                     break
 
@@ -469,7 +466,7 @@ class ReclaimApp(App):
             return
 
         # Limit the number of items to display for better performance
-        display_items = items[:min(100, len(items))]
+        display_items = items[: min(100, len(items))]
 
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
@@ -488,16 +485,10 @@ class ReclaimApp(App):
             rel_path = item_info.path
 
         storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
-        storage_cell = Text(
-            storage_status,
-            style="#268bd2" if item_info.is_icloud else "#859900"
-        )
+        storage_cell = Text(storage_status, style="#268bd2" if item_info.is_icloud else "#859900")
 
         table.add_row(
-            format_size(item_info.size),
-            storage_cell,
-            str(rel_path),
-            key=str(item_info.path)
+            format_size(item_info.size), storage_cell, str(rel_path), key=str(item_info.path)
         )
 
     # Track current sort state to avoid redundant sorts
@@ -519,7 +510,7 @@ class ReclaimApp(App):
         sort_keys = {
             "sort-size": lambda x: -x.size,  # Negative for descending order
             "sort-name": lambda x: x.path.name.lower(),
-            "sort-path": lambda x: str(x.path).lower()
+            "sort-path": lambda x: str(x.path).lower(),
         }
 
         # Get the appropriate sort key function
@@ -556,6 +547,7 @@ class ReclaimApp(App):
 
     def action_sort(self) -> None:
         """Show the sort options dialog."""
+
         def handle_sort_result(sort_option: Optional[str]) -> None:
             if sort_option:
                 self.sort_method = sort_option
@@ -690,10 +682,7 @@ class ReclaimApp(App):
 
 
 def run_textual_ui(
-    path: Path,
-    max_files: int = 100,
-    max_dirs: int = 100,
-    skip_dirs: list[str] = None
+    path: Path, max_files: int = 100, max_dirs: int = 100, skip_dirs: list[str] = None
 ) -> None:
     """Run the Textual UI application.
 
@@ -706,11 +695,7 @@ def run_textual_ui(
     if skip_dirs is None:
         skip_dirs = [".Trash", "System Volume Information"]
 
-    options = ScanOptions(
-        max_files=max_files,
-        max_dirs=max_dirs,
-        skip_dirs=skip_dirs
-    )
+    options = ScanOptions(max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_dirs)
 
     app = ReclaimApp(path, options)
     app.run()

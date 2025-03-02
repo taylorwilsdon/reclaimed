@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 @dataclass
 class CacheEntry:
     """Entry in the directory size cache."""
+
     size: int
     is_icloud: bool
     timestamp: float
@@ -70,9 +71,7 @@ class DirectorySizeCache:
         try:
             self._lock.acquire()
             self._cache[path_str] = CacheEntry(
-                size=size,
-                is_icloud=is_icloud,
-                timestamp=time.time()
+                size=size, is_icloud=is_icloud, timestamp=time.time()
             )
         finally:
             self._lock.release()
@@ -134,7 +133,8 @@ class DirectorySizeCache:
             self._lock.acquire()
             # Create list of keys to remove to avoid modifying dict during iteration
             to_remove = [
-                path_str for path_str, entry in self._cache.items()
+                path_str
+                for path_str, entry in self._cache.items()
                 if not entry.valid or (current_time - entry.timestamp > self._ttl)
             ]
 

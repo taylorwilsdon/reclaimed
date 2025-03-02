@@ -7,6 +7,7 @@ from typing import Dict, List, NamedTuple, Optional
 
 class FileInfo(NamedTuple):
     """Store file information in an immutable structure."""
+
     path: Path
     size: int
     is_icloud: bool = False
@@ -15,6 +16,7 @@ class FileInfo(NamedTuple):
 @dataclass
 class ScanProgress:
     """Progress information during scanning."""
+
     progress: float  # 0.0 to 1.0
     files: List[FileInfo]
     dirs: List[FileInfo]
@@ -25,6 +27,7 @@ class ScanProgress:
 @dataclass
 class ScanResult:
     """Final results of a directory scan."""
+
     files: List[FileInfo]
     directories: List[FileInfo]
     total_size: int
@@ -35,6 +38,7 @@ class ScanResult:
 @dataclass
 class ScanOptions:
     """Configuration options for directory scanning."""
+
     max_files: int = 10
     max_dirs: int = 10
     skip_dirs: List[str] = None  # Directories to skip

@@ -18,9 +18,9 @@ class MetricsPublisher:
 
     def __init__(
         self,
-        update_frequency: float = 1/30,  # 30Hz default
+        update_frequency: float = 1 / 30,  # 30Hz default
         buffer_size: int = 1000,
-        max_latency: float = 0.1  # 100ms max latency
+        max_latency: float = 0.1,  # 100ms max latency
     ):
         """Initialize the publisher.
 
@@ -58,9 +58,7 @@ class MetricsPublisher:
 
         self._should_stop.clear()
         self._publish_thread = threading.Thread(
-            target=self._publish_loop,
-            name="MetricsPublisher",
-            daemon=True
+            target=self._publish_loop, name="MetricsPublisher", daemon=True
         )
         self._publish_thread.start()
         self._is_running.set()
@@ -78,6 +76,7 @@ class MetricsPublisher:
         Args:
             subscriber: Subscriber to add
         """
+
         def cleanup(ref: weakref.ref) -> None:
             """Remove dead subscriber reference."""
             with self._subscribers_lock:
@@ -187,8 +186,7 @@ class MetricsPublisher:
                 except Exception as e:
                     logger.exception("Error publishing to subscriber")
                     error = MetricsError.create(
-                        error_type="PublishError",
-                        message=f"Error publishing metrics: {str(e)}"
+                        error_type="PublishError", message=f"Error publishing metrics: {str(e)}"
                     )
                     try:
                         subscriber._handle_error(error)
@@ -221,7 +219,7 @@ class MetricsPublisher:
             self._publish_count = 0
             self._drop_count = 0
 
-    def __enter__(self) -> 'MetricsPublisher':
+    def __enter__(self) -> "MetricsPublisher":
         """Context manager entry."""
         self.start()
         return self

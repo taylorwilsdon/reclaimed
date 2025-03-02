@@ -124,15 +124,15 @@ def cleanup_resources() -> None:
     gc.collect()
 
     # Suggest memory cleanup to OS
-    if hasattr(gc, 'garbage'):
+    if hasattr(gc, "garbage"):
         del gc.garbage[:]
 
     # On Unix-like systems, try to free memory back to OS
-    if hasattr(psutil, 'Process'):
+    if hasattr(psutil, "Process"):
         try:
             process = psutil.Process(os.getpid())
             # Try to release memory back to OS
-            if hasattr(process, 'memory_full_info'):
+            if hasattr(process, "memory_full_info"):
                 process.memory_full_info()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
@@ -181,7 +181,7 @@ class PerformanceTimer:
             return time.perf_counter_ns() / 1e9 - self._start_time
         return self._end_time - self._start_time
 
-    def __enter__(self) -> 'PerformanceTimer':
+    def __enter__(self) -> "PerformanceTimer":
         """Context manager entry."""
         self.start()
         return self
