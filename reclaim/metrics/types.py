@@ -1,9 +1,9 @@
 """Type definitions for the metrics system."""
 
+import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Dict, Optional
-import time
 
 
 class MetricType(Enum):

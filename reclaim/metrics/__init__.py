@@ -7,24 +7,13 @@ from .buffer import MetricsBuffer
 from .collector import MetricsCollector
 from .publisher import MetricsPublisher
 from .subscriber import (
-    MetricsSubscriber,
     BaseMetricsSubscriber,
+    CallbackMetricsSubscriber,
     LoggingMetricsSubscriber,
-    CallbackMetricsSubscriber
+    MetricsSubscriber,
 )
-from .types import (
-    MetricsSnapshot,
-    MetricsError,
-    OperationTiming,
-    MetricType
-)
-from .utils import (
-    RateCalculator,
-    ResourceMonitor,
-    PerformanceTimer,
-    cleanup_resources,
-    format_rate
-)
+from .types import MetricsError, MetricsSnapshot, MetricType, OperationTiming
+from .utils import PerformanceTimer, RateCalculator, ResourceMonitor, cleanup_resources, format_rate
 
 __version__ = "0.1.0"
 

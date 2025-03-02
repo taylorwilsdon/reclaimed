@@ -5,21 +5,16 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncIterator, Dict, Iterator, List, Optional, Set, Tuple
+from typing import AsyncIterator, Dict, Iterator, List, Optional, Tuple
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
 
 from ..utils.formatters import format_size
-from ..io.filesystem import FileSystemOperations
 from .cache import DirectorySizeCache
 from .errors import (
     AccessError,
-    DiskScannerError,
     InvalidPathError,
     PermissionError,
     ScanInterruptedError,

@@ -5,7 +5,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional, Callable, Any
+from typing import Callable, List, Optional
 
 from rich.text import Text
 from textual import on
@@ -13,11 +13,17 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.worker import Worker, WorkerState
 from textual.widgets import (
-    Button, DataTable, Footer, Header, Static,
-    LoadingIndicator, RadioSet, RadioButton
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    LoadingIndicator,
+    RadioButton,
+    RadioSet,
+    Static,
 )
+from textual.worker import Worker, WorkerState
 
 from ..core import DiskScanner, FileInfo, ScanOptions
 from ..utils.formatters import format_size
@@ -175,7 +181,7 @@ class ReclaimApp(App):
         """Event handler called when the app is mounted."""
         # Initialize progress manager
         self.progress_manager = ProgressManager(self, "main-container")
-        
+
         # Debug header visibility
         dirs_header = self.query_one("#dirs-section-header")
         files_header = self.query_one("#files-section-header")
@@ -185,7 +191,7 @@ class ReclaimApp(App):
 
         # Set initial focus to the files table after scan completes
         self.set_timer(0.1, self.focus_active_table)
-        
+
         # Check header visibility again after a short delay
         self.set_timer(1.0, self.check_header_visibility)
 
@@ -242,7 +248,7 @@ class ReclaimApp(App):
         files_buffer = []
         dirs_buffer = []
         last_file_count = 0
-        
+
         # Initialize progress with default values in case of early exception
         progress = None
         current_time = time.monotonic()
@@ -298,7 +304,7 @@ class ReclaimApp(App):
 
             # Dynamically adjust update interval based on files scanned
             ui_update_interval = base_ui_update_interval
-            
+
             # Only process progress data if we have a valid progress object
             if progress is not None:
                 if progress.scanned > 100000:
@@ -654,7 +660,7 @@ class ReclaimApp(App):
             print(f"DEBUG: files_header visible: {files_header.styles.display}")
             print(f"DEBUG: dirs_header text: {dirs_header.render()}")
             print(f"DEBUG: files_header text: {files_header.render()}")
-            
+
             # Check the DOM order
             all_widgets = list(self.query("Static"))
             print("DEBUG: Widget order in DOM:")

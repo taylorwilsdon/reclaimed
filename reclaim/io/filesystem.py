@@ -7,10 +7,10 @@ from typing import Iterator, Optional, Tuple
 
 from ..core.errors import (
     AccessError,
-    InvalidPathError,
-    PermissionError,
     FileNotFoundError,
+    InvalidPathError,
     IOError,
+    PermissionError,
 )
 
 
