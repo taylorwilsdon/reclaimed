@@ -1,4 +1,4 @@
-"""Shared styles for the disk scanner application."""
+"""Shared styles for reclaimed"""
 
 # Solarized Dark color scheme hex values
 BASE03 = "#002b36"

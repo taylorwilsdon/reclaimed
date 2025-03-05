@@ -595,8 +595,6 @@ class ReclaimedApp(App):
                             else:
                                 os.remove(path)
                             self.notify(f"Successfully deleted {path}", timeout=5)
-                            # Refresh the view
-                            self.scan_directory()
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
 
