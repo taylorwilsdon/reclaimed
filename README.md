@@ -4,7 +4,8 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 
 ## Features
 
-- 🚀 Fast recursive directory scanning, legitimately performant and doesn't look too choppy as it batches progress updates super efficiently, I basically played with it until I found the exact point of re-painting frequency that did not slow results by >5ms total. Separate thread for the clock so it can hum along in real time 😂
+- 🚀 Fast recursive directory scanning, legitimately performant and doesn't look too choppy as it batches progress updates super efficiently
+    - I basically played with it until I found the exact point of re-painting frequency that did not slow results by >5ms total. Separate thread for the clock so it can hum along in real time 😂
 - ☁️ Smart detection & handling of iCloud Drive symlink files vs local storage which is nice on the macbook 
 - 📊 Beautiful UI (uses [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
 - 🖥️ Interactive terminal UI for browsing and managing files/directories
