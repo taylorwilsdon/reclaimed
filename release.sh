@@ -24,8 +24,8 @@ rm -rf dist/ build/ *.egg-info/
 
 # 3. Build the package with UV
 echo -e "${YELLOW}Building package with UV...${NC}"
-# Use --no-isolation to avoid VCS-based versioning
-uv build --no-isolation
+# Build with UV
+uv build --no-build-isolation
 
 # 4. Create and push git tag
 echo -e "${YELLOW}Creating and pushing git tag v${VERSION}...${NC}"
