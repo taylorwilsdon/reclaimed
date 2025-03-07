@@ -13,7 +13,7 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 - ⚡️ Real-time progress indication
 - 🛡️ Graceful handling of permission issues
 
-https://github.com/user-attachments/assets/9151bbcd-530f-4580-9703-773e3ebd7acf
+https://github.com/user-attachments/assets/14650553-51ee-4604-ae1f-710369d995ae
 
 ## Installation
 
