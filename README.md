@@ -1,10 +1,9 @@
 # reclaimed ♻️
-![PyPI Downloads](https://img.shields.io/pypi/dm/reclaimed?style=flat-square&logo=pypi&logoColor=white&label=Downloads&labelColor=005da7&color=brightgreen)
-![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reddacted?style=flat-square&logo=github&logoColor=white&label=License&labelColor=555&color=blue)
-[![Privacy Shield](https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-success?style=flat-square&logo=shield&logoColor=white&labelColor=555)](https://github.com/taylorwilsdon)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed?style=flat-square&logo=github&logoColor=white&label=Commits&labelColor=24292e&color=blue)
-![PyPI Version](https://img.shields.io/pypi/v/reclaimed?style=flat-square&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue)
-
+![PyPI Downloads](https://img.shields.io/pypi/dm/reclaimed?style=flat&logo=pypi&logoColor=white&label=Downloads&labelColor=005da7&color=brightgreen)
+![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reddacted?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue)
+[![Privacy Shield](https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-success?style=flat&logo=shield&logoColor=white&labelColor=555)](https://github.com/taylorwilsdon)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=Commits&labelColor=24292e&color=blue)
+![PyPI Version](https://img.shields.io/pypi/v/reclaimed?style=flat&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue)
 A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
 
 ## Features
