@@ -123,8 +123,27 @@ fi
 # 9. Update Homebrew formula with correct dependency URLs and SHAs
 echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
 
-# Only runtime dependencies - no build dependencies needed
-DEPS=("click" "rich" "textual")
+# Extract dependencies from pyproject.toml
+echo -e "${YELLOW}Extracting dependencies from pyproject.toml...${NC}"
+# More precisely extract only the dependencies section by using awk to get content between dependencies = [ and ]
+DEPS_JSON=$(awk '/dependencies = \[/,/\]/' pyproject.toml | grep -v "dependencies = \[" | grep -v "\]" | sed 's/^[ \t]*//' | sed 's/,$//' | sed 's/"//g')
+DEPS=()
+
+# Parse the dependencies
+while IFS= read -r line; do
+    # Skip empty lines
+    if [ -z "$line" ]; then
+        continue
+    fi
+    # Extract package name (everything before >=, >, ==, or end of line)
+    pkg=$(echo "$line" | sed -E 's/([^><=]+).*/\1/' | xargs)
+    # Only add if not empty
+    if [ -n "$pkg" ]; then
+        DEPS+=("$pkg")
+    fi
+done <<< "$DEPS_JSON"
+
+echo -e "${YELLOW}Found dependencies: ${DEPS[*]}${NC}"
 
 for dep in "${DEPS[@]}"; do
   echo -e "${YELLOW}Fetching info for ${dep}...${NC}"
@@ -148,11 +167,34 @@ for dep in "${DEPS[@]}"; do
     ESCAPED_URL=$(echo "$SDIST_URL" | sed 's/[\/&]/\\&/g')
     ESCAPED_SHA=$(echo "$SDIST_SHA" | sed 's/[\/&]/\\&/g')
     
-    # Update the resource block using sed
-    sed -i '' "/resource \"$dep\" do/,/end/ {
-      s|url \".*\"|url \"$ESCAPED_URL\"|
-      s|sha256 \".*\"|sha256 \"$ESCAPED_SHA\"|
-    }" homebrew/reclaimed.rb
+    # Check if resource block exists for this dependency
+    if grep -q "resource \"$dep\" do" homebrew/reclaimed.rb; then
+      # Update existing resource block
+      sed -i '' "/resource \"$dep\" do/,/end/ {
+        s|url \".*\"|url \"$ESCAPED_URL\"|
+        s|sha256 \".*\"|sha256 \"$ESCAPED_SHA\"|
+      }" homebrew/reclaimed.rb
+    else
+      # Add new resource block before the install method
+      echo -e "${YELLOW}Adding new resource block for ${dep}${NC}"
+      
+      # Use awk to insert the new resource block before the install method
+      # This is more reliable on macOS than sed for multi-line insertions
+      awk -v url="$SDIST_URL" -v sha="$SDIST_SHA" -v dep="$dep" '
+      /def install/ {
+        print "  resource \"" dep "\" do";
+        print "    url \"" url "\"";
+        print "    sha256 \"" sha "\"";
+        print "  end";
+        print "";
+        print $0;
+        next;
+      }
+      { print }
+      ' homebrew/reclaimed.rb > homebrew/reclaimed.rb.tmp
+      
+      mv homebrew/reclaimed.rb.tmp homebrew/reclaimed.rb
+    fi
   else
     echo -e "${YELLOW}Failed to get URL and SHA for ${dep}${NC}"
   fi
