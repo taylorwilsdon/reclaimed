@@ -15,7 +15,8 @@ echo -e "${YELLOW}Starting release process for reclaimed v${VERSION}${NC}"
 
 # 1. Ensure we're on the main branch
 git checkout main
-git pull
+# Skip git pull if no upstream is configured
+git rev-parse --abbrev-ref @{upstream} >/dev/null 2>&1 && git pull || echo "No upstream branch configured, skipping pull"
 
 # 2. Clean build artifacts
 echo -e "${YELLOW}Cleaning previous build artifacts...${NC}"
@@ -27,24 +28,49 @@ uv build
 
 # 4. Create and push git tag
 echo -e "${YELLOW}Creating and pushing git tag v${VERSION}...${NC}"
-git tag -a "v${VERSION}" -m "Release v${VERSION}"
-git push origin "v${VERSION}"
+# Check if tag already exists
+if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+  echo -e "${YELLOW}Tag v${VERSION} already exists, skipping tag creation${NC}"
+else
+  git tag -a "v${VERSION}" -m "Release v${VERSION}"
+fi
+# Push tag to remote
+git push origin "v${VERSION}" || echo "Failed to push tag, continuing anyway"
 
 # 5. Create GitHub release
 echo -e "${YELLOW}Creating GitHub release...${NC}"
-gh release create "v${VERSION}" \
-  --title "reclaimed v${VERSION}" \
-  --notes "Release v${VERSION}" \
-  ./dist/*
+# Check if gh command is available
+if ! command -v gh &> /dev/null; then
+  echo -e "${YELLOW}GitHub CLI not found. Please install it to create releases.${NC}"
+  echo -e "${YELLOW}Skipping GitHub release creation.${NC}"
+else
+  # Check if release already exists
+  if gh release view "v${VERSION}" &>/dev/null; then
+    echo -e "${YELLOW}Release v${VERSION} already exists, skipping creation${NC}"
+  else
+    gh release create "v${VERSION}" \
+      --title "reclaimed v${VERSION}" \
+      --notes "Release v${VERSION}" \
+      ./dist/*
+  fi
+fi
 
 # 6. Download the tarball to calculate SHA
 echo -e "${YELLOW}Downloading tarball to calculate SHA...${NC}"
-curl -sL "https://github.com/${GITHUB_USER}/${REPO}/archive/refs/tags/v${VERSION}.tar.gz" -o "/tmp/${REPO}-${VERSION}.tar.gz"
-SHA=$(shasum -a 256 "/tmp/${REPO}-${VERSION}.tar.gz" | cut -d ' ' -f 1)
-
-# 7. Update Homebrew formula with the SHA
-echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
-sed -i '' "s/REPLACE_WITH_ACTUAL_SHA/${SHA}/" homebrew/reclaimed.rb
+TARBALL_PATH="/tmp/${REPO}-${VERSION}.tar.gz"
+if curl -sL --fail "https://github.com/${GITHUB_USER}/${REPO}/archive/refs/tags/v${VERSION}.tar.gz" -o "${TARBALL_PATH}"; then
+  SHA=$(shasum -a 256 "${TARBALL_PATH}" | cut -d ' ' -f 1)
+  
+  # 7. Update Homebrew formula with the SHA
+  if [ -n "$SHA" ]; then
+    echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
+    sed -i '' "s/REPLACE_WITH_ACTUAL_SHA/${SHA}/" homebrew/reclaimed.rb
+  else
+    echo -e "${YELLOW}Failed to calculate SHA, skipping Homebrew formula update${NC}"
+  fi
+else
+  echo -e "${YELLOW}Failed to download tarball, skipping SHA calculation and Homebrew formula update${NC}"
+fi
 
 # 8. Publish to PyPI if desired
 read -p "Do you want to publish to PyPI? (y/n) " -n 1 -r
