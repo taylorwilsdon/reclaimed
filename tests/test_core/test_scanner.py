@@ -1,8 +1,12 @@
 import pytest
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from reclaimed.core.errors import InvalidPathError, ScanInterruptedError
 from reclaimed.core.scanner import DiskScanner
-from reclaimed.core.types import ScanOptions, ScanResult
+from reclaimed.core.types import FileInfo, ScanOptions, ScanResult
 
 
 def test_scanner_initialization():
@@ -145,3 +149,156 @@ def test_scan_interruption(mock_filesystem, monkeypatch):
     scanner = DiskScanner()
     with pytest.raises(ScanInterruptedError):
         scanner.scan(mock_filesystem)
+
+
+def test_insert_sorted():
+    """Test the _insert_sorted method for maintaining sorted lists."""
+    scanner = DiskScanner()
+    
+    # Create test data
+    items = []
+    file1 = FileInfo(Path("/test/file1.txt"), 1000, False)
+    file2 = FileInfo(Path("/test/file2.txt"), 2000, False)
+    file3 = FileInfo(Path("/test/file3.txt"), 3000, False)
+    file4 = FileInfo(Path("/test/file4.txt"), 500, False)
+    
+    # Insert items and check order
+    scanner._insert_sorted(items, file2)  # [2000]
+    assert len(items) == 1
+    assert items[0].size == 2000
+    
+    scanner._insert_sorted(items, file3)  # [3000, 2000]
+    assert len(items) == 2
+    assert items[0].size == 3000
+    assert items[1].size == 2000
+    
+    scanner._insert_sorted(items, file1)  # [3000, 2000, 1000]
+    assert len(items) == 3
+    assert items[0].size == 3000
+    assert items[1].size == 2000
+    assert items[2].size == 1000
+    
+    scanner._insert_sorted(items, file4)  # [3000, 2000, 1000, 500]
+    assert len(items) == 4
+    assert items[0].size == 3000
+    assert items[3].size == 500
+    
+    # Test with max_items limit
+    items = [file3, file2, file1]  # [3000, 2000, 1000]
+    
+    # This should not be inserted (smaller than smallest item)
+    scanner._insert_sorted(items, file4, max_items=3)  # Still [3000, 2000, 1000]
+    assert len(items) == 3
+    assert items[0].size == 3000
+    assert items[2].size == 1000
+    
+    # Create a file that should be inserted in the middle
+    file5 = FileInfo(Path("/test/file5.txt"), 2500, False)
+    scanner._insert_sorted(items, file5, max_items=3)  # [3000, 2500, 2000]
+    assert len(items) == 3
+    assert items[0].size == 3000
+    assert items[1].size == 2500
+    assert items[2].size == 2000
+
+
+def test_update_dir_sizes():
+    """Test the _update_dir_sizes method."""
+    scanner = DiskScanner()
+    
+    # Create a test file path with multiple parent directories
+    file_path = Path("/test/dir1/dir2/file.txt")
+    file_size = 1024
+    is_icloud = True
+    
+    # Update directory sizes
+    scanner._update_dir_sizes(file_path, file_size, is_icloud)
+    
+    # Check that all parent directories were updated
+    for parent in file_path.parents:
+        assert parent in scanner._dir_sizes
+        size, is_cloud = scanner._dir_sizes[parent]
+        assert size == file_size
+        assert is_cloud == is_icloud
+    
+    # Add another file in the same directory
+    file_path2 = Path("/test/dir1/dir2/file2.txt")
+    file_size2 = 2048
+    is_icloud2 = False
+    
+    scanner._update_dir_sizes(file_path2, file_size2, is_icloud2)
+    
+    # Check that parent directories have accumulated sizes
+    for parent in file_path2.parents:
+        assert parent in scanner._dir_sizes
+        size, is_cloud = scanner._dir_sizes[parent]
+        assert size == file_size + file_size2
+        # Once a directory contains an iCloud file, it stays marked as iCloud
+        assert is_cloud == True
+
+
+def test_save_results(tmp_path):
+    """Test the save_results method."""
+    scanner = DiskScanner()
+    
+    # Create test data
+    files = [
+        FileInfo(Path("/test/file1.txt"), 1000, False),
+        FileInfo(Path("/test/file2.txt"), 2000, True)
+    ]
+    
+    dirs = [
+        FileInfo(Path("/test/dir1"), 3000, False),
+        FileInfo(Path("/test/dir2"), 4000, True)
+    ]
+    
+    # Set up scanner internal state
+    scanner._total_size = 10000
+    scanner._file_count = 5
+    scanner._access_issues = {Path("/test/error"): "Permission denied"}
+    
+    # Create output path
+    output_path = tmp_path / "results.json"
+    
+    # Mock console to avoid actual printing
+    scanner.console = MagicMock()
+    
+    # Save results
+    scanner.save_results(output_path, files, dirs, Path("/test"))
+    
+    # Verify file was created
+    assert output_path.exists()
+    
+    # Load and verify contents
+    with open(output_path, "r") as f:
+        results = json.load(f)
+    
+    # Check structure
+    assert "scan_info" in results
+    assert "largest_files" in results
+    assert "largest_directories" in results
+    assert "access_issues" in results
+    
+    # Check content
+    assert results["scan_info"]["total_size_bytes"] == 10000
+    assert results["scan_info"]["files_scanned"] == 5
+    assert len(results["largest_files"]) == 2
+    assert len(results["largest_directories"]) == 2
+    assert len(results["access_issues"]) == 1
+    
+    # Check file details
+    assert results["largest_files"][0]["size_bytes"] == 1000
+    assert results["largest_files"][1]["size_bytes"] == 2000
+    assert results["largest_files"][1]["storage_type"] == "icloud"
+    
+    # Check directory details
+    assert results["largest_directories"][0]["size_bytes"] == 3000
+    assert results["largest_directories"][1]["size_bytes"] == 4000
+    assert results["largest_directories"][1]["storage_type"] == "icloud"
+
+
+def test_scan_async_exists():
+    """Test that the scan_async method exists."""
+    scanner = DiskScanner()
+    # Just verify the method exists
+    assert hasattr(scanner, 'scan_async')
+    assert callable(scanner.scan_async)
