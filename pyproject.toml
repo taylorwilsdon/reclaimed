@@ -8,7 +8,8 @@ package = true
 
 [project]
 name = "reclaimed"
-dynamic = ["version"]
+version = "0.1.6"
+# dynamic = ["version"]
 description = "A powerful disk usage analyzer with iCloud support"
 readme = "README.md"
 requires-python = ">=3.8"
