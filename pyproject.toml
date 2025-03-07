@@ -35,6 +35,7 @@ dependencies = [
     "click>=8.0.0",
     "rich>=10.0.0",
     "textual>=0.52.1",
+    "typing_extensions>=4.12.2"
 ]
 
 [project.urls]
