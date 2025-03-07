@@ -3,7 +3,7 @@ class Reclaimed < Formula
 
   desc "A powerful disk usage analyzer with iCloud support"
   homepage "https://github.com/taylorwilsdon/reclaimed"
-  version "0.1.0"
+  version "0.1.6"
   url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v#{version}.tar.gz"
   sha256 "REPLACE_WITH_ACTUAL_SHA" # Update this with the actual SHA after creating a release
   license "MIT"
