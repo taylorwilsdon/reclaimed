@@ -497,8 +497,37 @@ class ReclaimedApp(App):
         if not items:
             return
 
-        # Limit the number of items to display for better performance
-        display_items = items[: min(100, len(items))]
+        # Calculate how many items we can display based on available screen space
+        # Get the current screen size
+        screen_height = self.size.height if hasattr(self, 'size') else 24  # Default to 24 if size not available
+        
+        # Estimate space needed for other UI elements (headers, footers, etc.)
+        # Header (1) + Title (1) + Status bar (1) + Section headers (2) + Footer (1) = ~6 lines
+        other_ui_elements = 6
+        
+        # Each table gets roughly half of the remaining space
+        available_height_per_table = max(5, (screen_height - other_ui_elements) // 2)
+        
+        # Determine max items to display - use the greater of:
+        # 1. User-specified max (from options)
+        # 2. Available height based on screen size
+        max_items = available_height_per_table
+        
+        if table_id == "#files-table":
+            user_max = getattr(self.options, 'user_max_files', self.options.max_files)
+        else:  # dirs-table
+            user_max = getattr(self.options, 'user_max_dirs', self.options.max_dirs)
+            
+        # Use the larger of calculated max or user-specified max
+        max_items = max(user_max, max_items)
+        
+        # Debug print to understand what's happening
+        print(f"DEBUG: {table_id} - Screen height: {screen_height}, Available per table: {available_height_per_table}")
+        print(f"DEBUG: {table_id} - User max: {user_max}, Calculated max: {max_items}, Items available: {len(items)}")
+        
+        # Limit the number of items to display
+        display_items = items[: min(max_items, len(items))]
+        print(f"DEBUG: {table_id} - Actually displaying: {len(display_items)} items")
 
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
@@ -764,14 +793,23 @@ def run_textual_ui(
 
     Args:
         path: Directory to scan
-        max_files: Maximum number of files to show
-        max_dirs: Maximum number of directories to show
+        max_files: Maximum number of files to show (minimum, will show more if space allows)
+        max_dirs: Maximum number of directories to show (minimum, will show more if space allows)
         skip_dirs: List of directory names to skip
     """
     if skip_dirs is None:
         skip_dirs = [".Trash", "System Volume Information"]
 
-    options = ScanOptions(max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_dirs)
+    # Use much larger values for scanner to ensure we have enough data
+    # The UI will limit display based on screen size and user preferences
+    scanner_max_files = 1000  # Collect up to 1000 files
+    scanner_max_dirs = 1000   # Collect up to 1000 directories
+    
+    options = ScanOptions(max_files=scanner_max_files, max_dirs=scanner_max_dirs, skip_dirs=skip_dirs)
+    
+    # Store user preferences for UI display
+    options.user_max_files = max_files
+    options.user_max_dirs = max_dirs
 
     app = ReclaimedApp(path, options)
     app.run()
