@@ -49,15 +49,15 @@ class TestReclaimedApp:
         file_a = FileInfo(Path("/test/a.txt"), 3000, False)
         file_b = FileInfo(Path("/test/b.txt"), 2000, False)
         file_c = FileInfo(Path("/test/c.txt"), 1000, False)
-        
+
         # Test sort by name key function
         name_key = lambda x: x.path.name.lower()
         assert name_key(file_a) < name_key(file_b) < name_key(file_c)
-        
+
         # Test sort by path key function
         path_key = lambda x: str(x.path).lower()
         assert path_key(file_a) < path_key(file_b) < path_key(file_c)
-        
+
         # Test sort by size key function (negative for descending order)
         size_key = lambda x: -x.size
         assert size_key(file_a) < size_key(file_b) < size_key(file_c)
@@ -68,15 +68,15 @@ class TestReclaimedApp:
         file_a = FileInfo(Path("/test/a.txt"), 3000, False)
         file_b = FileInfo(Path("/test/b.txt"), 2000, False)
         file_c = FileInfo(Path("/test/c.txt"), 1000, False)
-        
+
         # Test sort by name key function
         name_key = lambda x: x.path.name.lower()
         assert name_key(file_a) < name_key(file_b) < name_key(file_c)
-        
+
         # Test sort by path key function
         path_key = lambda x: str(x.path).lower()
         assert path_key(file_a) < path_key(file_b) < path_key(file_c)
-        
+
         # Test sort by size key function (negative for descending order)
         size_key = lambda x: -x.size
         assert size_key(file_a) < size_key(file_b) < size_key(file_c)
@@ -94,10 +94,10 @@ def test_run_textual_ui():
         # Setup the mock
         mock_app_instance = MagicMock()
         MockApp.return_value = mock_app_instance
-        
+
         # Call the function
         run_textual_ui(Path("/test"), 50, 30)
-        
+
         # Just verify that the mock was called and run was called
         assert MockApp.called
         assert mock_app_instance.run.called
