@@ -2,6 +2,10 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+# Ensure package can be built with UV
+package = { include = ["reclaimed"] }
+
 [project]
 name = "reclaimed"
 dynamic = ["version"]
