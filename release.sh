@@ -82,7 +82,30 @@ then
     uv publish
 fi
 
-# 9. Instructions for Homebrew tap
+# 9. Update Homebrew formula with correct dependency URLs and SHAs
+echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
+DEPS=("click" "rich" "textual")
+for dep in "${DEPS[@]}"; do
+  # Get latest version
+  LATEST_VERSION=$(pip index versions $dep | head -n1 | awk '{print $2}' | tr -d '()')
+  echo -e "${YELLOW}Fetching info for ${dep} ${LATEST_VERSION}...${NC}"
+  
+  # Get URL and SHA
+  JSON_INFO=$(pip index versions $dep --format=json | grep -A 10 "$LATEST_VERSION")
+  URL=$(echo "$JSON_INFO" | grep -o '"url": "[^"]*"' | head -1 | cut -d'"' -f4)
+  SHA=$(echo "$JSON_INFO" | grep -o '"digests": {[^}]*}' | grep -o '"sha256": "[^"]*"' | cut -d'"' -f4)
+  
+  if [ -n "$URL" ] && [ -n "$SHA" ]; then
+    echo -e "${YELLOW}Updating ${dep} to ${URL} with SHA ${SHA}${NC}"
+    # Update the formula
+    sed -i '' "s|url \"https://files.pythonhosted.org/packages/.*/${dep}-.*\.tar\.gz\"|url \"${URL}\"|" homebrew/reclaimed.rb
+    sed -i '' "s|sha256 \"[0-9a-f]*\"|sha256 \"${SHA}\"|" homebrew/reclaimed.rb
+  else
+    echo -e "${YELLOW}Failed to get URL and SHA for ${dep}${NC}"
+  fi
+done
+
+# 10. Instructions for Homebrew tap
 echo -e "${GREEN}Release v${VERSION} completed!${NC}"
 echo -e "${GREEN}To publish to Homebrew:${NC}"
 echo -e "1. Create a tap repository: github.com/${GITHUB_USER}/homebrew-tap"
