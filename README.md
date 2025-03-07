@@ -33,13 +33,23 @@ https://github.com/user-attachments/assets/1aae04e7-3201-414d-a1e3-6ea5d55bd691
 pip install reclaimed
 ```
 
+### Using Homebrew (macOS)
+
+```bash
+brew install taylorwilsdon/tap/reclaimed
+```
+
 ### From Source
 
 ```bash
 git clone https://github.com/taylorwilsdon/reclaimed.git
 cd reclaimed
+pip install -e .
+```
+
+For development:
+```bash
 pip install -r requirements.txt
-hatch shell
 ```
 
 ## Usage
@@ -85,7 +95,7 @@ The interactive UI provides:
 
 ## Development
 
-This project uses [Hatch](https://hatch.pypa.io/) for development workflow management.
+This project uses [UV](https://github.com/astral-sh/uv) for building and publishing, and [Hatch](https://hatch.pypa.io/) for development workflow management.
 
 ### Setup Development Environment
 
@@ -107,7 +117,10 @@ hatch run test-cov
 hatch run lint
 
 # Build distribution packages
-hatch build
+uv build --sdist --wheel
+
+# Publish to PyPI
+uv publish
 
 # Run with interactive UI
 python -m reclaimed /path/to/scan

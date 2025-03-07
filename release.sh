@@ -123,13 +123,13 @@ fi
 # 9. Update Homebrew formula with correct dependency URLs and SHAs
 echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
 
-# Extract dependencies from pyproject.toml
-echo -e "${YELLOW}Extracting dependencies from pyproject.toml...${NC}"
+# Extract direct dependencies from pyproject.toml
+echo -e "${YELLOW}Extracting direct dependencies from pyproject.toml...${NC}"
 # More precisely extract only the dependencies section by using awk to get content between dependencies = [ and ]
 DEPS_JSON=$(awk '/dependencies = \[/,/\]/' pyproject.toml | grep -v "dependencies = \[" | grep -v "\]" | sed 's/^[ \t]*//' | sed 's/,$//' | sed 's/"//g')
-DEPS=()
+DIRECT_DEPS=()
 
-# Parse the dependencies
+# Parse the direct dependencies
 while IFS= read -r line; do
     # Skip empty lines
     if [ -z "$line" ]; then
@@ -139,11 +139,60 @@ while IFS= read -r line; do
     pkg=$(echo "$line" | sed -E 's/([^><=]+).*/\1/' | xargs)
     # Only add if not empty
     if [ -n "$pkg" ]; then
-        DEPS+=("$pkg")
+        DIRECT_DEPS+=("$pkg")
     fi
 done <<< "$DEPS_JSON"
 
-echo -e "${YELLOW}Found dependencies: ${DEPS[*]}${NC}"
+echo -e "${YELLOW}Found direct dependencies: ${DIRECT_DEPS[*]}${NC}"
+
+# Create a temporary virtual environment to resolve all dependencies
+echo -e "${YELLOW}Creating temporary virtual environment to resolve all dependencies...${NC}"
+TEMP_VENV="/tmp/reclaimed_temp_venv"
+python -m venv "$TEMP_VENV"
+source "$TEMP_VENV/bin/activate"
+
+# Install direct dependencies to resolve transitive dependencies
+echo -e "${YELLOW}Installing dependencies to resolve full dependency tree...${NC}"
+for dep in "${DIRECT_DEPS[@]}"; do
+    pip install "$dep" >/dev/null 2>&1
+done
+
+# Get all installed packages (excluding standard library and development packages)
+echo -e "${YELLOW}Extracting full dependency tree...${NC}"
+ALL_DEPS=$(pip freeze | grep -v "^-e" | cut -d= -f1 | tr '[:upper:]' '[:lower:]')
+
+# Create an array of all dependencies, normalizing names and avoiding duplicates
+DEPS=()
+
+while IFS= read -r pkg; do
+    # Skip empty lines and the package itself
+    if [ -z "$pkg" ] || [ "$pkg" = "reclaimed" ]; then
+        continue
+    fi
+    
+    # Normalize package name (use hyphens consistently)
+    normalized_pkg=$(echo "$pkg" | tr '_' '-')
+    
+    # Check if this package is already in DEPS (avoid duplicates)
+    is_duplicate=0
+    for existing_dep in "${DEPS[@]}"; do
+        if [ "$existing_dep" = "$normalized_pkg" ]; then
+            is_duplicate=1
+            break
+        fi
+    done
+    
+    # Only add if not a duplicate
+    if [ "$is_duplicate" -eq 0 ]; then
+        DEPS+=("$normalized_pkg")
+    fi
+done <<< "$ALL_DEPS"
+
+# Clean up the temporary virtual environment
+deactivate
+rm -rf "$TEMP_VENV"
+
+echo -e "${YELLOW}Found all dependencies: ${DEPS[*]}${NC}"
 
 for dep in "${DEPS[@]}"; do
   echo -e "${YELLOW}Fetching info for ${dep}...${NC}"
@@ -167,10 +216,19 @@ for dep in "${DEPS[@]}"; do
     ESCAPED_URL=$(echo "$SDIST_URL" | sed 's/[\/&]/\\&/g')
     ESCAPED_SHA=$(echo "$SDIST_SHA" | sed 's/[\/&]/\\&/g')
     
-    # Check if resource block exists for this dependency
-    if grep -q "resource \"$dep\" do" homebrew/reclaimed.rb; then
-      # Update existing resource block
-      sed -i '' "/resource \"$dep\" do/,/end/ {
+    # Check if resource block exists for this dependency (checking both hyphen and underscore versions)
+    hyphen_version=$(echo "$dep" | tr '_' '-')
+    underscore_version=$(echo "$dep" | tr '-' '_')
+    
+    if grep -q "resource \"$hyphen_version\" do" homebrew/reclaimed.rb; then
+      # Update existing resource block with hyphen version
+      sed -i '' "/resource \"$hyphen_version\" do/,/end/ {
+        s|url \".*\"|url \"$ESCAPED_URL\"|
+        s|sha256 \".*\"|sha256 \"$ESCAPED_SHA\"|
+      }" homebrew/reclaimed.rb
+    elif grep -q "resource \"$underscore_version\" do" homebrew/reclaimed.rb; then
+      # Update existing resource block with underscore version
+      sed -i '' "/resource \"$underscore_version\" do/,/end/ {
         s|url \".*\"|url \"$ESCAPED_URL\"|
         s|sha256 \".*\"|sha256 \"$ESCAPED_SHA\"|
       }" homebrew/reclaimed.rb

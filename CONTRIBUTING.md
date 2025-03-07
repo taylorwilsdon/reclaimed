@@ -88,22 +88,34 @@ Thank you for your interest in contributing to reclaimed! This document provides
 
 ## Release Process
 
-Releases are automated through GitHub Actions when tags are pushed:
+Releases are managed through the `release.sh` script:
 
-1. Ensure all tests pass on main
-2. Tag the release:
+1. Update the version in `reclaimed/version.py`
+
+2. Run the release script:
    ```bash
-   git tag -a v0.1.0 -m "Release v0.1.0"
-   ```
-3. Push tags:
-   ```bash
-   git push --tags
+   ./release.sh
    ```
 
-The GitHub Action will automatically:
-- Run all tests
-- Build the package
-- Publish to PyPI
+   This script will:
+   - Check for required tools (jq)
+   - Ensure you're on the main branch
+   - Clean previous build artifacts
+   - Build the package with UV
+   - Create and push git tags
+   - Create a GitHub release
+   - Update the Homebrew formula with the correct SHA and dependencies
+   - Prompt to publish to PyPI
+
+3. To update only the Homebrew formula dependencies:
+   ```bash
+   ./release.sh --update-deps-only
+   ```
+
+4. After running the script, publish to Homebrew:
+   - Ensure you have a tap repository at github.com/yourusername/homebrew-tap
+   - Copy homebrew/reclaimed.rb to your tap repository
+   - Users can then install with: `brew install yourusername/tap/reclaimed`
 
 ## Questions?
 
