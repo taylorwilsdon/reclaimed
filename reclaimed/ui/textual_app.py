@@ -422,20 +422,52 @@ class ReclaimedApp(App):
         if not items:
             return
 
+        # Pre-filter items that would be skipped in _add_row_to_table
+        # This ensures our comparison is based on items that will actually be displayed
+        filtered_items = []
+        
+        # Find the scanned directory size if we're dealing with directories
+        scan_dir_size = 0
+        if table_id == "#dirs-table":
+            for dir_info in items:
+                if dir_info.path == self.path:
+                    scan_dir_size = dir_info.size
+                    break
+        
+        for item in items:
+            # For directory tables, apply special filtering
+            if table_id == "#dirs-table":
+                # Skip parent directories with the same size as the scan directory
+                if item.path in self.path.parents:
+                    # Skip if parent directory has the same size as the scan directory (within 1%)
+                    if scan_dir_size > 0 and abs(item.size - scan_dir_size) / scan_dir_size < 0.01:
+                        continue
+                
+                # Skip root and top-level directories unless directly scanned
+                if (str(item.path) == '/' or
+                    (len(item.path.parts) <= 2 and item.path != self.path)):
+                    continue
+            
+            # Skip distant parent directories for any table
+            if item.path in self.path.parents and len(self.path.parts) - len(item.path.parts) > 2:
+                continue
+            
+            filtered_items.append(item)
+
         # Check if data has changed significantly
         current_items = self._last_table_items.get(table_id, [])
 
         # If item count is the same, check if top items are the same
-        if len(current_items) == len(items):
+        if len(current_items) == len(filtered_items):
             # Only check the first few items for performance
-            check_count = min(5, len(items))
+            check_count = min(5, len(filtered_items))
             items_changed = False
 
             for i in range(check_count):
                 if (
                     i >= len(current_items)
-                    or items[i].path != current_items[i].path
-                    or items[i].size != current_items[i].size
+                    or filtered_items[i].path != current_items[i].path
+                    or filtered_items[i].size != current_items[i].size
                 ):
                     items_changed = True
                     break
@@ -445,10 +477,10 @@ class ReclaimedApp(App):
                 return
 
         # Update last items
-        self._last_table_items[table_id] = items
+        self._last_table_items[table_id] = filtered_items
 
         # Now update the table
-        self._update_table(table_id, items)
+        self._update_table(table_id, items)  # Still pass all items to update_table
 
     def _update_table(self, table_id: str, items: List[FileInfo]) -> None:
         """Helper method to update a specific table with items.
@@ -479,16 +511,62 @@ class ReclaimedApp(App):
             table: The DataTable to add the row to
             item_info: FileInfo object with data for the row
         """
+        # Get the table ID to determine if we're dealing with directories or files
+        table_id = table.id
+        
+        # For directory tables only, apply special filtering to avoid redundant entries
+        if table_id == "dirs-table":
+            # Skip parent directories with the same size as the scan directory
+            # This is the key fix for the duplicate directory issue:
+            # When scanning a directory, parent directories often show the same size
+            # because they contain all the same content
+            if item_info.path in self.path.parents:
+                # Find the scanned directory size
+                scan_dir_size = 0
+                for dir_info in self.largest_dirs:
+                    if dir_info.path == self.path:
+                        scan_dir_size = dir_info.size
+                        break
+                
+                # Skip if parent directory has the same size as the scan directory
+                # Allow a small margin for rounding differences (1%)
+                if scan_dir_size > 0 and abs(item_info.size - scan_dir_size) / scan_dir_size < 0.01:
+                    return
+            
+            # Skip root and top-level directories unless directly scanned
+            if (str(item_info.path) == '/' or
+                (len(item_info.path.parts) <= 2 and item_info.path != self.path)):
+                return
+        
+        # Get the absolute path
+        absolute_path = str(item_info.path.absolute())
+        
+        # Format the path for display
         try:
-            rel_path = item_info.path.relative_to(self.path)
-        except ValueError:
-            rel_path = item_info.path
-
+            # Check the relationship between the item path and the scanned path
+            if item_info.path == self.path:
+                # This is the directory being scanned
+                display_path = absolute_path
+            elif self.path in item_info.path.parents:
+                # This is a subdirectory of the scanned directory
+                display_path = absolute_path
+            elif item_info.path in self.path.parents:
+                # Skip parent directories that are too far up the tree
+                if len(self.path.parts) - len(item_info.path.parts) > 2:
+                    return
+                display_path = absolute_path
+            else:
+                # Other paths outside the scan hierarchy
+                display_path = absolute_path
+        except Exception:
+            # Fallback for any path resolution errors
+            display_path = absolute_path
+        
         storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
         storage_cell = Text(storage_status, style="#268bd2" if item_info.is_icloud else "#859900")
 
         table.add_row(
-            format_size(item_info.size), storage_cell, str(rel_path), key=str(item_info.path)
+            format_size(item_info.size), storage_cell, display_path, key=str(item_info.path)
         )
 
     # Track current sort state to avoid redundant sorts
