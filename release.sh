@@ -86,20 +86,28 @@ fi
 echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
 DEPS=("click" "rich" "textual")
 for dep in "${DEPS[@]}"; do
+  # Get package info directly from PyPI JSON API
+  echo -e "${YELLOW}Fetching info for ${dep}...${NC}"
+  JSON_INFO=$(curl -s "https://pypi.org/pypi/${dep}/json")
+  
   # Get latest version
-  LATEST_VERSION=$(pip index versions $dep | head -n1 | awk '{print $2}' | tr -d '()')
-  echo -e "${YELLOW}Fetching info for ${dep} ${LATEST_VERSION}...${NC}"
+  LATEST_VERSION=$(echo "$JSON_INFO" | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
+  echo -e "${YELLOW}Latest version: ${LATEST_VERSION}${NC}"
   
-  # Get URL and SHA
-  JSON_INFO=$(pip index versions $dep --format=json | grep -A 10 "$LATEST_VERSION")
-  URL=$(echo "$JSON_INFO" | grep -o '"url": "[^"]*"' | head -1 | cut -d'"' -f4)
-  SHA=$(echo "$JSON_INFO" | grep -o '"digests": {[^}]*}' | grep -o '"sha256": "[^"]*"' | cut -d'"' -f4)
+  # Get sdist URL and SHA
+  SDIST_URL=$(echo "$JSON_INFO" | grep -o '"url":"[^"]*\.tar\.gz[^"]*"' | head -1 | cut -d'"' -f4)
+  SDIST_SHA=$(echo "$JSON_INFO" | grep -o "\"${SDIST_URL}\".*\"sha256\":\s*\"[^\"]*\"" | grep -o '"sha256":\s*"[^"]*"' | cut -d'"' -f4)
   
-  if [ -n "$URL" ] && [ -n "$SHA" ]; then
-    echo -e "${YELLOW}Updating ${dep} to ${URL} with SHA ${SHA}${NC}"
-    # Update the formula
-    sed -i '' "s|url \"https://files.pythonhosted.org/packages/.*/${dep}-.*\.tar\.gz\"|url \"${URL}\"|" homebrew/reclaimed.rb
-    sed -i '' "s|sha256 \"[0-9a-f]*\"|sha256 \"${SHA}\"|" homebrew/reclaimed.rb
+  if [ -n "$SDIST_URL" ] && [ -n "$SDIST_SHA" ]; then
+    echo -e "${YELLOW}Updating ${dep} to ${SDIST_URL} with SHA ${SDIST_SHA}${NC}"
+    # Update the formula - use different approach to avoid sed issues
+    awk -v url="$SDIST_URL" -v sha="$SDIST_SHA" -v dep="$dep" '
+      /resource "'$dep'"/ {p=1}
+      p && /url / {sub(/url ".*"/, "url \""url"\""); p=0}
+      p && /sha256 / {sub(/sha256 ".*"/, "sha256 \""sha"\""); p=0}
+      {print}
+    ' homebrew/reclaimed.rb > homebrew/reclaimed.rb.tmp
+    mv homebrew/reclaimed.rb.tmp homebrew/reclaimed.rb
   else
     echo -e "${YELLOW}Failed to get URL and SHA for ${dep}${NC}"
   fi
