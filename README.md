@@ -9,7 +9,8 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
     - Separate thread for the clock so it can hum along in real time 😂
 - ☁️ Smart detection & handling of iCloud Drive symlink files vs local storage which is nice on the macbook 
 - 📊 Beautiful UI (uses [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
-- 🖥️ Interactive terminal UI for browsing and managing files/directories
+    - Textual is dope, you can change the colors and all kinds of shit, but real ones who appreciate solarized dark for the masterpiece that it is can leave it on default
+- 🖥️ Interactive terminal UI for browsing and managing files/directories and a worse noninteractive mode that's not worth using unless you're purging files on a headless rpi that's barely hanging on
 - 🗑️ Delete large files and directories directly from the interface (and yes, there's a safety confirmation first)
 - 💾 Export results to JSON for further analysis or batch operations
 - ⚡️ Real-time progress indication
