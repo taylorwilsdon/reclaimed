@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 # Ensure package can be built with UV
-packages = ["reclaimed"]
+package = true
 
 [project]
 name = "reclaimed"

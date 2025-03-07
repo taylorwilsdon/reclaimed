@@ -5,7 +5,7 @@ class Reclaimed < Formula
   homepage "https://github.com/taylorwilsdon/reclaimed"
   version "0.1.6"
   url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v#{version}.tar.gz"
-  sha256 "REPLACE_WITH_ACTUAL_SHA" # Update this with the actual SHA after creating a release
+  sha256 "REPLACE_WITH_ACTUAL_SHA" # Will be updated by release script
   license "MIT"
 
   depends_on "python@3.11"
