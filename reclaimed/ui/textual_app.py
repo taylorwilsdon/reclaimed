@@ -520,14 +520,9 @@ class ReclaimedApp(App):
             
         # Use the larger of calculated max or user-specified max
         max_items = max(user_max, max_items)
-        
-        # Debug print to understand what's happening
-        print(f"DEBUG: {table_id} - Screen height: {screen_height}, Available per table: {available_height_per_table}")
-        print(f"DEBUG: {table_id} - User max: {user_max}, Calculated max: {max_items}, Items available: {len(items)}")
-        
+
         # Limit the number of items to display
         display_items = items[: min(max_items, len(items))]
-        print(f"DEBUG: {table_id} - Actually displaying: {len(display_items)} items")
 
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
