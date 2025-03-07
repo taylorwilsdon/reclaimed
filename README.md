@@ -1,6 +1,6 @@
-# reclaimed 🌟
+# reclaimed ♻️
 [![Privacy Shield](https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-success)](https://github.com/taylorwilsdon)
-![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reclaimed)
+![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reddacted)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed)
 ![PyPI - Version](https://img.shields.io/pypi/v/reclaimed)
 
