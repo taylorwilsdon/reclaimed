@@ -1,4 +1,8 @@
 # reclaimed 🌟
+[![Privacy Shield](https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-success)](https://github.com/taylorwilsdon)
+![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reclaimed)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed)
+![PyPI - Version](https://img.shields.io/pypi/v/reclaimed)
 
 A powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
 
@@ -14,8 +18,8 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 - 🖥️ Interactive terminal UI for browsing and managing files/directories and a worse noninteractive mode that's not worth using unless you're purging files on a headless rpi that's barely hanging on
 - 🗑️ Delete large files and directories directly from the interface (and yes, there's a safety confirmation first)
 - 💾 Export results to JSON for further analysis or batch operations
-- ⚡️ Real-time progress indication
-- 🛡️ Graceful handling of permission issues
+- ⚡️ Real-time progress indication & graceful handling of permission issues for a smooth run every time
+- 🛡️ Actual privacy - no telemetry, no analytics, no tracking - it only runs 100% offline, can't even check for updates
 
 https://github.com/user-attachments/assets/1aae04e7-3201-414d-a1e3-6ea5d55bd691
 
