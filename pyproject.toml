@@ -1,18 +1,17 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.uv]
-# Ensure package can be built with UV
+# Configuration for UV package build
 package = true
 
 [project]
 name = "reclaimed"
-version = "0.1.7"
+dynamic = ["version"]
 description = "A powerful disk usage analyzer with iCloud support"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {file = "LICENSE"}
 authors = [
     {name = "Taylor Wilsdon", email = "taylor@taylorwilsdon.com"}
 ]
@@ -46,30 +45,11 @@ Issues = "https://github.com/taylorwilsdon/reclaimed/issues"
 [project.scripts]
 reclaimed = "reclaimed.cli:main"
 
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.build.targets.wheel]
+[tool.setuptools]
 packages = ["reclaimed"]
 
-[tool.hatch.envs.default]
-dependencies = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "black",
-    "mypy",
-    "ruff",
-]
-
-[tool.hatch.envs.default.scripts]
-test = "pytest {args:tests}"
-test-cov = "pytest --cov=reclaimed --cov-report=term-missing tests"
-lint = [
-    "black .",
-    "ruff check .",
-    "mypy reclaimed tests",
-]
+[tool.setuptools.dynamic]
+version = {attr = "reclaimed.version.__version__"}
 
 [tool.pytest.ini_options]
 minversion = "6.0"

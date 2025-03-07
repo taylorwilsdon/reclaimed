@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Configuration
-VERSION="0.1.7"
+# Configuration - Version comes from version.py
+VERSION_FILE="reclaimed/version.py"
 GITHUB_USER="taylorwilsdon"
 REPO="reclaimed"
 UPDATE_DEPS_ONLY=false
@@ -21,6 +21,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Extract version from version.py file
+VERSION=$(grep -o '__version__ = "[^"]*"' "$VERSION_FILE" | cut -d'"' -f2)
 echo -e "${YELLOW}Starting release process for reclaimed v${VERSION}${NC}"
 
 # 1. Check for required tools
@@ -40,21 +42,33 @@ if [ "$UPDATE_DEPS_ONLY" = false ]; then
     echo -e "${YELLOW}Cleaning previous build artifacts...${NC}"
     rm -rf dist/ build/ *.egg-info/
 
-    # 4. Build the package with UV
+    # 4. Build the package with UV (both sdist and wheel)
     echo -e "${YELLOW}Building package with UV...${NC}"
-    # Build with UV
-    uv build --no-build-isolation
+    uv build --sdist --wheel || {
+        echo -e "${YELLOW}Failed to build package${NC}"
+        exit 1
+    }
 
     # 5. Create and push git tag
     echo -e "${YELLOW}Creating and pushing git tag v${VERSION}...${NC}"
-    # Check if tag already exists
-    if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-      echo -e "${YELLOW}Tag v${VERSION} already exists, skipping tag creation${NC}"
+    # Improved tag handling - check both local and remote tags
+    LOCAL_TAG_EXISTS=$(git tag -l "v${VERSION}")
+    REMOTE_TAG_EXISTS=$(git ls-remote --tags origin "refs/tags/v${VERSION}" | wc -l)
+
+    if [ -n "$LOCAL_TAG_EXISTS" ]; then
+      echo -e "${YELLOW}Local tag v${VERSION} already exists${NC}"
     else
       git tag -a "v${VERSION}" -m "Release v${VERSION}"
+      echo -e "${YELLOW}Created local tag v${VERSION}${NC}"
     fi
-    # Push tag to remote
-    git push origin refs/tags/"v${VERSION}" || echo "Failed to push tag, continuing anyway"
+    
+    # Only push if tag doesn't exist on remote
+    if [ "$REMOTE_TAG_EXISTS" -eq 0 ]; then
+      echo -e "${YELLOW}Pushing tag to remote...${NC}"
+      git push origin "v${VERSION}" || echo "Failed to push tag, continuing anyway"
+    else
+      echo -e "${YELLOW}Remote tag v${VERSION} already exists, skipping push${NC}"
+    fi
 
     # 6. Create GitHub release
     echo -e "${YELLOW}Creating GitHub release...${NC}"
@@ -83,7 +97,9 @@ if [ "$UPDATE_DEPS_ONLY" = false ]; then
       # Update Homebrew formula with the SHA
       if [ -n "$SHA" ]; then
         echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
-        sed -i '' "s/REPLACE_WITH_ACTUAL_SHA/${SHA}/" homebrew/reclaimed.rb
+        sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" homebrew/reclaimed.rb
+        # Also update version in the formula
+        sed -i '' "s/version \".*\"/version \"${VERSION}\"/" homebrew/reclaimed.rb
       else
         echo -e "${YELLOW}Failed to calculate SHA, skipping Homebrew formula update${NC}"
       fi
@@ -97,23 +113,18 @@ if [ "$UPDATE_DEPS_ONLY" = false ]; then
     if [[ $REPLY =~ ^[Yy]$ ]]
     then
         echo -e "${YELLOW}Publishing to PyPI...${NC}"
-        uv publish
+        if ! uv publish; then
+            echo -e "${YELLOW}Failed to publish to PyPI${NC}"
+            exit 1
+        fi
     fi
 fi
 
-# 9. Check for jq
-if ! command -v jq &> /dev/null; then
-  echo -e "${YELLOW}jq not found. Please install it to update dependencies.${NC}"
-  echo -e "${YELLOW}On macOS: brew install jq${NC}"
-  echo -e "${YELLOW}Skipping dependency updates.${NC}"
-  exit 1
-fi
-
-# 10. Update Homebrew formula with correct dependency URLs and SHAs
+# 9. Update Homebrew formula with correct dependency URLs and SHAs
 echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
 
-# All dependencies (both build and runtime)
-DEPS=("hatchling" "hatch-vcs" "setuptools-scm" "click" "rich" "textual")
+# Only runtime dependencies - no build dependencies needed
+DEPS=("click" "rich" "textual")
 
 for dep in "${DEPS[@]}"; do
   echo -e "${YELLOW}Fetching info for ${dep}...${NC}"

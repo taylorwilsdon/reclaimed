@@ -1,6 +1,6 @@
 """Disk space analysis and optimization tool."""
 
-from ._version import __version__
+from .version import __version__
 from .core import (
     AccessError,
     DiskScanner,
