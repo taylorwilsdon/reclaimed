@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "reclaimed"
-version = "0.1.6"
+version = "0.1.7"
 description = "A powerful disk usage analyzer with iCloud support"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -35,7 +35,7 @@ classifiers = [
 dependencies = [
     "click>=8.0.0",
     "rich>=10.0.0",
-    "textual>=0.10.0",
+    "textual>=0.52.1",
 ]
 
 [project.urls]

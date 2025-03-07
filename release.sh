@@ -2,9 +2,19 @@
 set -e
 
 # Configuration
-VERSION="0.1.6"
+VERSION="0.1.7"
 GITHUB_USER="taylorwilsdon"
 REPO="reclaimed"
+UPDATE_DEPS_ONLY=false
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --update-deps-only) UPDATE_DEPS_ONLY=true ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -13,101 +23,125 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Starting release process for reclaimed v${VERSION}${NC}"
 
-# 1. Ensure we're on the main branch
-git checkout main
-# Skip git pull if no upstream is configured
-git rev-parse --abbrev-ref @{upstream} >/dev/null 2>&1 && git pull || echo "No upstream branch configured, skipping pull"
-
-# 2. Clean build artifacts
-echo -e "${YELLOW}Cleaning previous build artifacts...${NC}"
-rm -rf dist/ build/ *.egg-info/
-
-# 3. Build the package with UV
-echo -e "${YELLOW}Building package with UV...${NC}"
-# Build with UV
-uv build --no-build-isolation
-
-# 4. Create and push git tag
-echo -e "${YELLOW}Creating and pushing git tag v${VERSION}...${NC}"
-# Check if tag already exists
-if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-  echo -e "${YELLOW}Tag v${VERSION} already exists, skipping tag creation${NC}"
-else
-  git tag -a "v${VERSION}" -m "Release v${VERSION}"
-fi
-# Push tag to remote
-git push origin refs/tags/"v${VERSION}" || echo "Failed to push tag, continuing anyway"
-
-# 5. Create GitHub release
-echo -e "${YELLOW}Creating GitHub release...${NC}"
-# Check if gh command is available
-if ! command -v gh &> /dev/null; then
-  echo -e "${YELLOW}GitHub CLI not found. Please install it to create releases.${NC}"
-  echo -e "${YELLOW}Skipping GitHub release creation.${NC}"
-else
-  # Check if release already exists
-  if gh release view "v${VERSION}" &>/dev/null; then
-    echo -e "${YELLOW}Release v${VERSION} already exists, skipping creation${NC}"
-  else
-    gh release create "v${VERSION}" \
-      --title "reclaimed v${VERSION}" \
-      --notes "Release v${VERSION}" \
-      ./dist/*
-  fi
+# 1. Check for required tools
+if ! command -v jq &> /dev/null; then
+  echo -e "${YELLOW}jq not found. Please install it to update dependencies.${NC}"
+  echo -e "${YELLOW}On macOS: brew install jq${NC}"
+  exit 1
 fi
 
-# 6. Download the tarball to calculate SHA
-echo -e "${YELLOW}Downloading tarball to calculate SHA...${NC}"
-TARBALL_PATH="/tmp/${REPO}-${VERSION}.tar.gz"
-if curl -sL --fail "https://github.com/${GITHUB_USER}/${REPO}/archive/refs/tags/v${VERSION}.tar.gz" -o "${TARBALL_PATH}"; then
-  SHA=$(shasum -a 256 "${TARBALL_PATH}" | cut -d ' ' -f 1)
-  
-  # 7. Update Homebrew formula with the SHA
-  if [ -n "$SHA" ]; then
-    echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
-    sed -i '' "s/REPLACE_WITH_ACTUAL_SHA/${SHA}/" homebrew/reclaimed.rb
-  else
-    echo -e "${YELLOW}Failed to calculate SHA, skipping Homebrew formula update${NC}"
-  fi
-else
-  echo -e "${YELLOW}Failed to download tarball, skipping SHA calculation and Homebrew formula update${NC}"
+if [ "$UPDATE_DEPS_ONLY" = false ]; then
+    # 2. Ensure we're on the main branch
+    git checkout main
+    # Skip git pull if no upstream is configured
+    git rev-parse --abbrev-ref @{upstream} >/dev/null 2>&1 && git pull || echo "No upstream branch configured, skipping pull"
+
+    # 3. Clean build artifacts
+    echo -e "${YELLOW}Cleaning previous build artifacts...${NC}"
+    rm -rf dist/ build/ *.egg-info/
+
+    # 4. Build the package with UV
+    echo -e "${YELLOW}Building package with UV...${NC}"
+    # Build with UV
+    uv build --no-build-isolation
+
+    # 5. Create and push git tag
+    echo -e "${YELLOW}Creating and pushing git tag v${VERSION}...${NC}"
+    # Check if tag already exists
+    if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+      echo -e "${YELLOW}Tag v${VERSION} already exists, skipping tag creation${NC}"
+    else
+      git tag -a "v${VERSION}" -m "Release v${VERSION}"
+    fi
+    # Push tag to remote
+    git push origin refs/tags/"v${VERSION}" || echo "Failed to push tag, continuing anyway"
+
+    # 6. Create GitHub release
+    echo -e "${YELLOW}Creating GitHub release...${NC}"
+    # Check if gh command is available
+    if ! command -v gh &> /dev/null; then
+      echo -e "${YELLOW}GitHub CLI not found. Please install it to create releases.${NC}"
+      echo -e "${YELLOW}Skipping GitHub release creation.${NC}"
+    else
+      # Check if release already exists
+      if gh release view "v${VERSION}" &>/dev/null; then
+        echo -e "${YELLOW}Release v${VERSION} already exists, skipping creation${NC}"
+      else
+        gh release create "v${VERSION}" \
+          --title "reclaimed v${VERSION}" \
+          --notes "Release v${VERSION}" \
+          ./dist/*
+      fi
+    fi
+
+    # 7. Download the tarball to calculate SHA
+    echo -e "${YELLOW}Downloading tarball to calculate SHA...${NC}"
+    TARBALL_PATH="/tmp/${REPO}-${VERSION}.tar.gz"
+    if curl -sL --fail "https://github.com/${GITHUB_USER}/${REPO}/archive/refs/tags/v${VERSION}.tar.gz" -o "${TARBALL_PATH}"; then
+      SHA=$(shasum -a 256 "${TARBALL_PATH}" | cut -d ' ' -f 1)
+      
+      # Update Homebrew formula with the SHA
+      if [ -n "$SHA" ]; then
+        echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
+        sed -i '' "s/REPLACE_WITH_ACTUAL_SHA/${SHA}/" homebrew/reclaimed.rb
+      else
+        echo -e "${YELLOW}Failed to calculate SHA, skipping Homebrew formula update${NC}"
+      fi
+    else
+      echo -e "${YELLOW}Failed to download tarball, skipping SHA calculation and Homebrew formula update${NC}"
+    fi
+
+    # 8. Publish to PyPI if desired
+    read -p "Do you want to publish to PyPI? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]
+    then
+        echo -e "${YELLOW}Publishing to PyPI...${NC}"
+        uv publish
+    fi
 fi
 
-# 8. Publish to PyPI if desired
-read -p "Do you want to publish to PyPI? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]
-then
-    echo -e "${YELLOW}Publishing to PyPI...${NC}"
-    uv publish
+# 9. Check for jq
+if ! command -v jq &> /dev/null; then
+  echo -e "${YELLOW}jq not found. Please install it to update dependencies.${NC}"
+  echo -e "${YELLOW}On macOS: brew install jq${NC}"
+  echo -e "${YELLOW}Skipping dependency updates.${NC}"
+  exit 1
 fi
 
-# 9. Update Homebrew formula with correct dependency URLs and SHAs
+# 10. Update Homebrew formula with correct dependency URLs and SHAs
 echo -e "${YELLOW}Updating Homebrew formula with correct dependency URLs and SHAs...${NC}"
-DEPS=("click" "rich" "textual")
+
+# All dependencies (both build and runtime)
+DEPS=("hatchling" "hatch-vcs" "setuptools-scm" "click" "rich" "textual")
+
 for dep in "${DEPS[@]}"; do
-  # Get package info directly from PyPI JSON API
   echo -e "${YELLOW}Fetching info for ${dep}...${NC}"
+  
+  # Get package info from PyPI JSON API
   JSON_INFO=$(curl -s "https://pypi.org/pypi/${dep}/json")
   
-  # Get latest version
-  LATEST_VERSION=$(echo "$JSON_INFO" | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
+  # Use jq to reliably extract information
+  LATEST_VERSION=$(echo "$JSON_INFO" | jq -r '.info.version')
   echo -e "${YELLOW}Latest version: ${LATEST_VERSION}${NC}"
   
-  # Get sdist URL and SHA
-  SDIST_URL=$(echo "$JSON_INFO" | grep -o '"url":"[^"]*\.tar\.gz[^"]*"' | head -1 | cut -d'"' -f4)
-  SDIST_SHA=$(echo "$JSON_INFO" | grep -o "\"${SDIST_URL}\".*\"sha256\":\s*\"[^\"]*\"" | grep -o '"sha256":\s*"[^"]*"' | cut -d'"' -f4)
+  # Get the sdist (tar.gz) URL and SHA
+  SDIST_INFO=$(echo "$JSON_INFO" | jq -r '.urls[] | select(.packagetype=="sdist")')
+  SDIST_URL=$(echo "$SDIST_INFO" | jq -r '.url')
+  SDIST_SHA=$(echo "$SDIST_INFO" | jq -r '.digests.sha256')
   
-  if [ -n "$SDIST_URL" ] && [ -n "$SDIST_SHA" ]; then
+  if [ -n "$SDIST_URL" ] && [ -n "$SDIST_SHA" ] && [ "$SDIST_URL" != "null" ] && [ "$SDIST_SHA" != "null" ]; then
     echo -e "${YELLOW}Updating ${dep} to ${SDIST_URL} with SHA ${SDIST_SHA}${NC}"
-    # Update the formula - use different approach to avoid sed issues
-    awk -v url="$SDIST_URL" -v sha="$SDIST_SHA" -v dep="$dep" '
-      /resource "'$dep'"/ {p=1}
-      p && /url / {sub(/url ".*"/, "url \""url"\""); p=0}
-      p && /sha256 / {sub(/sha256 ".*"/, "sha256 \""sha"\""); p=0}
-      {print}
-    ' homebrew/reclaimed.rb > homebrew/reclaimed.rb.tmp
-    mv homebrew/reclaimed.rb.tmp homebrew/reclaimed.rb
+    
+    # Escape URL and SHA for sed
+    ESCAPED_URL=$(echo "$SDIST_URL" | sed 's/[\/&]/\\&/g')
+    ESCAPED_SHA=$(echo "$SDIST_SHA" | sed 's/[\/&]/\\&/g')
+    
+    # Update the resource block using sed
+    sed -i '' "/resource \"$dep\" do/,/end/ {
+      s|url \".*\"|url \"$ESCAPED_URL\"|
+      s|sha256 \".*\"|sha256 \"$ESCAPED_SHA\"|
+    }" homebrew/reclaimed.rb
   else
     echo -e "${YELLOW}Failed to get URL and SHA for ${dep}${NC}"
   fi
