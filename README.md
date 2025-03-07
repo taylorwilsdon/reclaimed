@@ -5,15 +5,15 @@ A powerful and user-friendly command-line tool for analyzing disk usage, with sp
 ## Features
 
 - 🚀 Fast recursive directory scanning, legitimately performant and batches progress updates efficiently 
-- ☁️ Smart detection of iCloud vs local storage which is nice on the macbook
-- 📊 Beautiful UI (utilizing [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
+- ☁️ Smart detection & handling of iCloud Drive symlink files vs local storage which is nice on the macbook 
+- 📊 Beautiful UI (uses [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
 - 🖥️ Interactive terminal UI for browsing and managing files/directories
-- 🗑️ Delete large files and directories directly from the interface
+- 🗑️ Delete large files and directories directly from the interface (and yes, there's a safety confirmation first)
 - 💾 Export results to JSON for further analysis or batch operations
 - ⚡️ Real-time progress indication
 - 🛡️ Graceful handling of permission issues
 
-https://github.com/user-attachments/assets/14650553-51ee-4604-ae1f-710369d995ae
+https://github.com/user-attachments/assets/d50e480e-b7c7-4354-bb4d-60d2993bd548
 
 ## Installation
 
