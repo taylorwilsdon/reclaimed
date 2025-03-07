@@ -46,7 +46,7 @@ Issues = "https://github.com/taylorwilsdon/reclaimed/issues"
 reclaimed = "reclaimed.cli:main"
 
 [tool.setuptools]
-packages = ["reclaimed"]
+packages = ["reclaimed", "reclaimed.core", "reclaimed.io", "reclaimed.metrics", "reclaimed.ui", "reclaimed.utils"]
 
 [tool.setuptools.dynamic]
 version = {attr = "reclaimed.version.__version__"}
