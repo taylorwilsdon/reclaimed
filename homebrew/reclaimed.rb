@@ -1,15 +1,14 @@
 class Reclaimed < Formula
   include Language::Python::Virtualenv
 
-  desc "A powerful disk usage analyzer with iCloud support"
+  desc "Powerful disk usage analyzer with iCloud support"
   homepage "https://github.com/taylorwilsdon/reclaimed"
-  version "0.2.3"
-  url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v#{version}.tar.gz"
+  url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v0.2.3.tar.gz"
   sha256 "78935b4f8d3595a57b31de5fb81bfe0f4abda900393c616e911b941ed6e63b5a"
   license "MIT"
 
   depends_on "python@3.11"
-  
+
   # Runtime dependencies only - no build dependencies needed
   resource "click" do
     url "https://files.pythonhosted.org/packages/b9/2e/0090cbf739cee7d23781ad4b89a9894a41538e4fcf4c31dcdd705b78eb8b/click-8.1.8.tar.gz"
@@ -26,7 +25,7 @@ class Reclaimed < Formula
     sha256 "aae3f9fde00c7440be00e3c3ac189e02d014f5298afdc32132f93480f9e09146"
   end
 
-  resource "typing_extensions" do
+  resource "typing-extensions" do
     url "https://files.pythonhosted.org/packages/df/db/f35a00659bc03fec321ba8bce9420de607a1d37f8342eee1863174c69557/typing_extensions-4.12.2.tar.gz"
     sha256 "1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"
   end
