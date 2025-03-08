@@ -21,6 +21,7 @@ from textual.widgets import (
     LoadingIndicator,
     RadioButton,
     RadioSet,
+    Rule,
     Static,
 )
 from textual.worker import Worker, WorkerState
@@ -150,8 +151,8 @@ class ReclaimedApp(App):
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
-        yield Header(show_clock=True)
-        yield Static("[bold]Reclaimed[/bold]", id="title")
+        with Header(show_clock=True):
+            yield Static("[bold]Reclaimed[/bold]", id="title")
 
         with Container(id="main-container"):
             # Status bar with scan info
@@ -174,8 +175,8 @@ class ReclaimedApp(App):
             yield files_table
 
         with Horizontal(id="footer-container"):
-            yield Footer()
             yield LoadingIndicator(id="scan-progress")
+            yield Footer()
 
     def on_mount(self) -> None:
         """Event handler called when the app is mounted."""
