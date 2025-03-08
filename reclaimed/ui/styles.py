@@ -1,92 +1,118 @@
 """Shared styles for reclaimed"""
 
-# Solarized Dark color scheme hex values
-BASE03 = "#002b36"
-BASE02 = "#073642"
-BASE01 = "#586e75"
-BASE00 = "#657b83"
-BASE0 = "#839496"
-BASE1 = "#93a1a1"
-BASE2 = "#eee8d5"
-BASE3 = "#fdf6e3"
-YELLOW = "#b58900"
-ORANGE = "#cb4b16"
-RED = "#dc322f"
-MAGENTA = "#d33682"
-VIOLET = "#6c71c4"
-BLUE = "#268bd2"
-CYAN = "#2aa198"
-GREEN = "#859900"
+# Selenized Dark color scheme hex values
+BG_0 = "#103c48"     # darkest background
+BG_1 = "#184956"     # darker background
+BG_2 = "#2d5b69"     # content highlights
+DIM_0 = "#72898f"    # dimmed text
+FG_0 = "#adbcbc"     # main text
+FG_1 = "#cad8d9"     # emphasized text
+YELLOW = "#ebc13d"   # bright yellow
+ORANGE = "#fd9456"   # bright orange
+RED = "#ff665c"      # bright red
+MAGENTA = "#ff84cd"  # bright magenta
+VIOLET = "#bd96fa"   # bright violet
+BLUE = "#58a3ff"     # bright blue
+CYAN = "#53d6c7"     # bright cyan
+GREEN = "#84c747"    # bright green
+
+# Backward compatibility with old Solarized variable names
+BASE03 = BG_0        # darkest background
+BASE02 = BG_1        # darker background
+BASE01 = BG_2        # content highlights
+BASE00 = DIM_0       # dimmed text
+BASE0 = FG_0         # main text
+BASE1 = FG_1         # emphasized text
+BASE2 = FG_1         # light content (mapped to emphasized text in selenized)
+BASE3 = FG_1         # lightest (mapped to emphasized text in selenized)
 
 # CSS styles for Textual UI
 TEXTUAL_CSS = """
 /* Define all variables at the start */
-$base03: #002b36;
-$base02: #073642;
-$base01: #586e75;
-$base00: #657b83;
-$base0: #839496;
-$base1: #93a1a1;
-$base2: #eee8d5;
-$base3: #fdf6e3;
-$yellow: #b58900;
-$orange: #cb4b16;
-$red: #dc322f;
-$magenta: #d33682;
-$violet: #6c71c4;
-$blue: #268bd2;
-$cyan: #2aa198;
-$green: #859900;
+$bg_0: #103c48;      /* darkest background */
+$bg_1: #184956;      /* darker background */
+$bg_2: #2d5b69;      /* content highlights */
+$dim_0: #72898f;     /* dimmed text */
+$fg_0: #adbcbc;      /* main text */
+$fg_1: #cad8d9;      /* emphasized text */
+$yellow: #ebc13d;    /* bright yellow */
+$orange: #fd9456;    /* bright orange */
+$red: #ff665c;       /* bright red */
+$magenta: #ff84cd;   /* bright magenta */
+$violet: #bd96fa;    /* bright violet */
+$blue: #58a3ff;      /* bright blue */
+$cyan: #53d6c7;      /* bright cyan */
+$green: #84c747;     /* bright green */
 
 
 Screen {
-    background: $base03;
-    color: $base0;
+    background: $bg_0;
+    color: $fg_0;
 }
 
 #header {
     dock: top;
     height: 1;
-    background: $base02;
-    color: $base1;
+    background: $bg_2;
+    color: $fg_1;
     text-align: center;
+    border-bottom: solid $fg_0;
 }
 
 #footer {
-    dock: bottom;
     height: 1;
-    background: $base02;
-    color: $base1;
+    background: $bg_2;
+    color: $fg_1;
+    border-top: solid $fg_0;
+}
+
+#footer-container {
+    dock: bottom;
+    height: 2;
+    align-horizontal: left;
+}
+
+#scan-progress {
+    background: $bg_1;
+}
+
+Footer {
+    height: 1;
 }
 
 #main-container {
     width: 100%;
     height: 100%;
+    border-left: heavy $bg_2;
+    border-right: heavy $bg_2;
 }
 
 #title {
     dock: top;
-    height: 1;
-    background: $base02;
-    color: $blue;
+    height: 2;
+    background: $bg_2;
+    color: $fg_1;
     text-align: center;
+    border-bottom: heavy $bg_1;
 }
 
 #status-bar {
     dock: top;
-    height: 1;
-    background: $base02;
+    height: 2;
+    background: $bg_1;
     padding: 0 1;
+    border-bottom: heavy $bg_2;
 }
 
 #status-label {
     width: auto;
-    color: $base01;
+    color: $fg_0;
 }
 
 #path-display {
     width: 1fr;
-    color: $base1;
+    color: $fg_0;
+    padding: 0 1;
 }
 
 #scan-timer {
@@ -100,13 +126,13 @@ Screen {
     width: auto;
     color: $blue;
     text-align: right;
+    padding-right: 1;
 }
-
 #files-section-header, #dirs-section-header {
     height: 1;
-    background: $base02;
-    color: $blue;
-    padding: 0 1;
+    background: $bg_1;
+    padding-left: 1;
+    color: $fg_1;
     margin-top: 1;
 }
 
@@ -117,17 +143,18 @@ Screen {
 
 #files-table, #dirs-table {
     width: 100%;
-    background: $base03;
-    color: $base0;
+    color: $fg_0;
+    background: $bg_0;
+    border: heavy $fg_0;
 }
 
 #dirs-table {
-    height: 40%;
+    height: 45%;
     margin-bottom: 1;
 }
 
 #files-table {
-    height: 40%;
+    height: 50%;
 }
 
 DataTable {
@@ -135,18 +162,22 @@ DataTable {
 }
 
 DataTable > .datatable--header {
-    background: $base02;
-    color: $base1;
+    background: $bg_1;
+    color: $fg_1;
+    border-bottom: heavy $bg_2;
 }
 
 DataTable > .datatable--cursor {
-    background: $base01;
+    background: $bg_2;
+    color: $fg_1;
+    border: round $bg_1;
 }
 
 #dialog-container {
-    width: 60%;
+    width: 100%;
+    margin: 5;
     height: auto;
-    background: $base02;
+    background: $bg_1;
     border: tall $blue;
     padding: 1 2;
 }
@@ -155,12 +186,12 @@ DataTable > .datatable--cursor {
     width: 100%;
     height: 1;
     content-align: center middle;
-    color: $base1;
+    color: $fg_1;
 }
 
 #dialog-path {
     width: 100%;
-    height: 3;
+    height: 2;
     content-align: center middle;
     margin: 1 0;
     color: $red;
@@ -171,12 +202,13 @@ DataTable > .datatable--cursor {
     height: 3;
     content-align: center middle;
     margin-top: 1;
+    align-horizontal: center;
 }
 
 #sort-container {
     width: 40%;
     height: auto;
-    background: $base02;
+    background: $bg_1;
     border: tall $blue;
     padding: 1 2;
 }
@@ -186,7 +218,7 @@ DataTable > .datatable--cursor {
     height: 1;
     content-align: center middle;
     margin-bottom: 1;
-    color: $base1;
+    color: $fg_1;
 }
 
 #sort-buttons {
@@ -198,12 +230,12 @@ DataTable > .datatable--cursor {
 
 Button {
     margin: 0 1;
-    background: $base01;
-    color: $base2;
+    background: $bg_2;
+    color: $fg_1;
 }
 
 Button:hover {
-    background: $base00;
+    background: $dim_0;
 }
 
 Button.primary {
@@ -219,31 +251,13 @@ Button.error {
 }
 
 RadioButton {
-    background: $base02;
-    color: $base1;
+    background: $bg_1;
+    color: $fg_1;
 }
 
 RadioButton.-selected {
     background: $blue;
-    color: $base3;
+    color: $fg_1;
 }
 
-#footer-container {
-    layout: horizontal;
-    dock: bottom;
-    height: 3;
-    align-horizontal: left;
-    align-vertical: middle;
-    padding: 0 1;
-}
-
-#scan-progress {
-    margin-left: 2;
-    height: 1;
-    background: $base02;
-}
-
-Footer {
-    height: 1;
-}
 """
