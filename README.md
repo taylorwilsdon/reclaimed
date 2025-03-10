@@ -5,7 +5,7 @@
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=Commits&labelColor=24292e&color=blue)
 ![PyPI Version](https://img.shields.io/pypi/v/reclaimed?style=flat&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue)
 
-**reclaimed** is a powerful and user-friendly command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI.
+**reclaimed** is a cross-platform, ultra lightweight & surprisngly powerful command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI - full support for Linux, macOS & Windows!
 
 ## Features
 
@@ -15,7 +15,7 @@
 - ☁️ Smart detection & handling of iCloud Drive symlink files vs local storage which is nice on the macbook 
 - 📊 Beautiful UI (uses [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
     - Textual is dope, you can change the colors and everything - the mouse even works somehow but you can (and I do) drive this keyboard only
-    - Real ones who appreciate solarized dark for the masterpiece that it is can leave it on default
+    - Real ones who appreciate selenized dark for the masterpiece that it is can leave it on default
 - 🖥️ Interactive terminal UI for browsing and managing files/directories and a worse noninteractive mode that's not worth using unless you're purging files on a headless rpi that's barely hanging on
 - 🗑️ Delete large files and directories directly from the interface (and yes, there's a safety confirmation first)
 - 💾 Export results to JSON for further analysis or batch operations
@@ -163,7 +163,7 @@ reclaim ~/Documents --no-interactive
 - **Tabbed Interface**: Toggle between Files and Directories views
 - **Sorting**: Sort items by size (default), name, or path
 - **File Management**: Delete files and directories with confirmation
-- **Solarized Dark Theme**: Easy on the eyes for extended use
+- **Selenized Dark Theme**: Easy on the eyes for extended use, or flip to the palette of your choice thanks to textual (ctrl+p)
 
 ## Contributing
 
