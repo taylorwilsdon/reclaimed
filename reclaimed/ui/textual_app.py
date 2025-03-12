@@ -21,7 +21,6 @@ from textual.widgets import (
     LoadingIndicator,
     RadioButton,
     RadioSet,
-    Rule,
     Static,
 )
 from textual.worker import Worker, WorkerState
@@ -673,19 +672,25 @@ class ReclaimedApp(App):
         if table.cursor_coordinate is not None:
             row = table.cursor_coordinate.row
             if row < len(table.rows):
-                # Get the path from the row key
-                # Get row data (unused but kept for potential future use)
-                table.get_row_at(row)
-
-                # In the current version of Textual, we need to access the key differently
-                # The key is stored when we add the row, so we need to look it up in our data
-                if self.current_focus == "files" and row < len(self.largest_files):
-                    path = self.largest_files[row].path
-                elif self.current_focus == "dirs" and row < len(self.largest_dirs):
-                    path = self.largest_dirs[row].path
-                else:
-                    self.notify("Could not determine the path for this item", timeout=5)
+                # Get the actual displayed path from the row data
+                row_data = table.get_row_at(row)
+                if not row_data:
+                    self.notify("Could not get row data", timeout=5)
                     return
+
+                # The path is stored in the last column
+                path_str = row_data[2]  # [size, storage, path]
+
+                # Find the matching item in our data to ensure we have the correct path
+                items = self.largest_files if self.current_focus == "files" else self.largest_dirs
+                matching_items = [item for item in items if str(item.path) == path_str]
+
+                if not matching_items:
+                    self.notify(f"Selected {'file' if self.current_focus == 'files' else 'directory'} not found in data", timeout=5)
+                    return
+
+                # Use the path from our data structure to ensure consistency
+                path = matching_items[0].path
 
                 is_dir = path.is_dir()
 
@@ -693,10 +698,28 @@ class ReclaimedApp(App):
                 def handle_confirmation(confirmed: bool) -> None:
                     if confirmed:
                         try:
+                            # Delete the file/directory
                             if is_dir:
                                 shutil.rmtree(path)
                             else:
                                 os.remove(path)
+
+                            # Remove the item from our data
+                            items = self.largest_files if self.current_focus == "files" else self.largest_dirs
+                            items[:] = [item for item in items if item.path != path]
+
+                            # Remove the row from the table using the path as the key
+                            table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
+                            table.remove_row(str(path))
+
+                            # If we have remaining rows, ensure cursor is in a valid position
+                            if len(table.rows) > 0:
+                                current_row = table.cursor_coordinate.row if table.cursor_coordinate else 0
+                                # If cursor would be past the end, move it to last row
+                                if current_row >= len(table.rows):
+                                    current_row = len(table.rows) - 1
+                                table.move_cursor(row=current_row, column=0)
+
                             self.notify(f"Successfully deleted {path}", timeout=5)
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
