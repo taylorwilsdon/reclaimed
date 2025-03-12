@@ -96,10 +96,14 @@ if [ "$UPDATE_DEPS_ONLY" = false ]; then
       
       # Update Homebrew formula with the SHA
       if [ -n "$SHA" ]; then
-        echo -e "${YELLOW}Updating Homebrew formula with SHA: ${SHA}${NC}"
-        sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" homebrew/reclaimed.rb
-        # Also update version in the formula
+        echo -e "${YELLOW}Updating Homebrew formula with new version, URL and SHA...${NC}"
+        # Update version in the formula
         sed -i '' "s/version \".*\"/version \"${VERSION}\"/" homebrew/reclaimed.rb
+        # Update URL in the formula
+        ESCAPED_URL=$(echo "https://github.com/${GITHUB_USER}/${REPO}/archive/refs/tags/v${VERSION}.tar.gz" | sed 's/[\/&]/\\&/g')
+        sed -i '' "s|url \".*\"|url \"${ESCAPED_URL}\"|" homebrew/reclaimed.rb
+        # Update SHA in the formula
+        sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" homebrew/reclaimed.rb
       else
         echo -e "${YELLOW}Failed to calculate SHA, skipping Homebrew formula update${NC}"
       fi
