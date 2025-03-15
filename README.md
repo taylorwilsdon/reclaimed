@@ -113,19 +113,13 @@ hatch shell
 
 ```bash
 # Run tests
-hatch run test
-
-# Run tests with coverage
-hatch run test-cov
-
-# Run linting (black, ruff, mypy)
-hatch run lint
+hatch test
 
 # Build distribution packages
 uv build --sdist --wheel
 
-# Publish to PyPI
-uv publish
+# Create a new release
+./release.sh
 
 # Run with interactive UI
 python -m reclaimed /path/to/scan
