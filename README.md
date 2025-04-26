@@ -1,51 +1,61 @@
 # reclaimed ♻️
-![PyPI Downloads](https://img.shields.io/pypi/dm/reclaimed?style=flat&logo=pypi&logoColor=white&label=Downloads&labelColor=005da7&color=blue)
-![GitHub License](https://img.shields.io/github/license/taylorwilsdon/reddacted?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue)
-[![Privacy Shield](https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-blue?style=flat&logo=shield&logoColor=white&labelColor=555)](https://github.com/taylorwilsdon)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=Commits&labelColor=24292e&color=blue)
-![PyPI Version](https://img.shields.io/pypi/v/reclaimed?style=flat&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue)
 
-**reclaimed** is a cross-platform, ultra lightweight & surprisngly powerful command-line tool for analyzing disk usage, with special handling for iCloud storage on macOS. Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them with an interactive terminal UI - full support for Linux, macOS & Windows!
+<p align="center">
+  <img src="https://img.shields.io/pypi/dm/reclaimed?style=flat&logo=pypi&logoColor=white&label=Downloads&labelColor=005da7&color=blue" alt="PyPI Downloads" />
+  <img src="https://img.shields.io/github/license/taylorwilsdon/reddacted?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue" alt="License" />
+  <a href="https://github.com/taylorwilsdon">
+    <img src="https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-blue?style=flat&logo=shield&logoColor=white&labelColor=555" alt="Privacy Shield" />
+  </a>
+  <img src="https://img.shields.io/github/commit-activity/w/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=Commits&labelColor=24292e&color=blue" alt="Commit Activity" />
+  <img src="https://img.shields.io/pypi/v/reclaimed?style=flat&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue" alt="PyPI Version" />
+</p>
 
-## Features
+---
 
-- 🚀 Fast recursive directory scanning, legitimately performant and doesn't look too choppy as it batches progress updates super efficiently
-    - I basically kept timing identical runs and adjusting until I found the exact point of re-painting frequency that did not slow results by >5ms total. 
-    - Separate thread for the clock so it can hum along in real time 😂
-- ☁️ Smart detection & handling of iCloud Drive symlink files vs local storage which is nice on the macbook 
-- 📊 Beautiful UI (uses [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual) libraries)
-    - Textual is dope, you can change the colors and everything - the mouse even works somehow but you can (and I do) drive this keyboard only
-    - Real ones who appreciate selenized dark for the masterpiece that it is can leave it on default
-- 🖥️ Interactive terminal UI for browsing and managing files/directories and a worse noninteractive mode that's not worth using unless you're purging files on a headless rpi that's barely hanging on
-- 🗑️ Delete large files and directories directly from the interface (and yes, there's a safety confirmation first)
-- 💾 Export results to JSON for further analysis or batch operations
-- ⚡️ Real-time progress indication & graceful handling of permission issues for a smooth run every time
-- 🛡️ Actual privacy - no telemetry, no analytics, no tracking - it only runs 100% offline, can't even check for updates
+**reclaimed** is a cross-platform, ultra-lightweight, and surprisingly powerful command-line tool for analyzing disk usage — with special handling for iCloud storage on macOS.  
+Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them through an interactive terminal UI.  
+Fully supports **Linux**, **macOS**, and **Windows**.
+
+---
+
+## ✨ Features
+
+- 🚀 **Legitimately Performant**: Fast recursive directory scanning with ultra-efficient progress updates.
+  - Carefully tuned repaint frequency — optimized to avoid slowing results by even 5ms.
+  - Separate thread for the clock to keep real-time updates buttery smooth.
+- ☁️ **iCloud Smartness**: Detects and handles iCloud Drive symlink files vs local storage (macOS).
+- 📊 **Beautiful UI**: Powered by [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual).
+  - Full keyboard navigation, mouse support, and customizable themes.
+- 🖥️ **Interactive Terminal UI**: Browse, manage, and delete files/directories with ease.
+- 🗑️ **Safe Deletion**: Remove large files and directories directly from the interface — with confirmation prompts.
+- 💾 **Export to JSON**: Save scan results for further analysis or batch operations.
+- ⚡ **Real-Time Feedback**: Live progress indicators and graceful handling of permission issues.
+- 🛡️ **Actual Privacy**: 100% offline. No telemetry, no analytics, no tracking - can't even check for updates.
+
+---
 
 https://github.com/user-attachments/assets/1aae04e7-3201-414d-a1e3-6ea5d55bd691
 
-## Installation
+---
+
+## 📦 Installation
 
 ### Prerequisites
-
-- Python 3.8 or higher
+- Python 3.8+
 - pip (Python package installer)
-- Technically not a venv but if you aren't using a venv you're generally doing python wrong
+- (Optional but recommended) Use a virtual environment
 
-### Using pip (preferred)
-
+### Install via pip (preferred)
 ```bash
 pip install reclaimed
 ```
 
-### Using Homebrew (macOS)
-
+### Install via Homebrew (macOS)
 ```bash
 brew install taylorwilsdon/tap/reclaimed
 ```
 
-### From Source
-
+### Install from Source
 ```bash
 git clone https://github.com/taylorwilsdon/reclaimed.git
 cd reclaimed
@@ -57,14 +67,16 @@ For development:
 pip install -r requirements.txt
 ```
 
-## Usage
+---
 
-Basic usage:
+## 🚀 Usage
+
+### Basic
 ```bash
 reclaimed ~/Documents
 ```
 
-Advanced options:
+### Advanced
 ```bash
 # Show more results
 reclaimed ~/Documents --files 20 --dirs 15
@@ -74,43 +86,73 @@ reclaimed ~/Documents --output results.json
 ```
 
 ### Options
+| Option | Description |
+|:------|:------------|
+| `PATH` | Directory to scan (default: current directory) |
+| `-f, --files N` | Number of largest files to show (default: 10) |
+| `-d, --dirs N` | Number of largest directories to show (default: 10) |
+| `-o, --output FILE` | Save results to a JSON file |
+| `-i, --interactive` | Launch the interactive Textual UI |
 
-- `PATH`: Directory to scan (default: current directory)
-- `-f, --files N`: Number of largest files to show (default: 10)
-- `-d, --dirs N`: Number of largest directories to show (default: 10)
-- `-o, --output FILE`: Save results to JSON file
-- `-i, --interactive`: Launch the interactive Textual UI
+---
 
-## Output
+## 📊 Output
 
 ### CLI Mode
-The tool provides:
-- A real-time progress indicator showing files scanned and total size
-- Two tables showing the largest files and directories
-- Clear indication of iCloud vs local storage
-- Summary of any access issues encountered
+- Real-time progress indicator (files scanned, total size)
+- Tables of largest files and directories
+- iCloud vs local storage clearly indicated
+- Summary of any access issues
 
 ### Interactive Mode
-The interactive UI provides:
-- Tabbed interface to switch between files and directories views
-- Keyboard navigation (arrow keys) to browse through items
-- Ability to sort items by size, name, or path
-- File/directory deletion with confirmation dialog
-- Refresh capability to update the scan results
+- Tabbed interface: switch between Files and Directories
+- Keyboard navigation (arrow keys) and mouse support
+- Sort items by size, name, or path
+- Delete files/directories with confirmation
+- Refresh scan results
 
-## Development
+---
 
-This project uses [UV](https://github.com/astral-sh/uv) for building and publishing, and [Hatch](https://hatch.pypa.io/) for development workflow management.
+## 🎛️ Interactive Mode
+
+Launch automatically or with `-i` / `--interactive`:
+
+```bash
+reclaimed ~/Documents -i
+```
+
+Non-interactive mode (minimal output) can be forced with:
+
+```bash
+reclaimed ~/Documents --no-interactive
+```
+
+### Keyboard Shortcuts
+
+| Key        | Action                      |
+|------------|------------------------------|
+| `F`        | Switch to Files view          |
+| `D`        | Switch to Directories view    |
+| `S`        | Sort items                    |
+| `R`        | Refresh scan                  |
+| `Delete`   | Delete selected item          |
+| `?`        | Show help                     |
+| `Q`        | Quit application              |
+| Arrow keys | Navigate through items        |
+
+---
+
+## 🛠️ Development
+
+This project uses [UV](https://github.com/astral-sh/uv) for building/publishing and [Hatch](https://hatch.pypa.io/) for workflow management.
 
 ### Setup Development Environment
-
 ```bash
 pip install -r requirements.txt
 hatch shell
 ```
 
 ### Common Commands
-
 ```bash
 # Run tests
 hatch test
@@ -121,48 +163,26 @@ uv build --sdist --wheel
 # Create a new release
 ./release.sh
 
-# Run with interactive UI
+# Run interactively
 python -m reclaimed /path/to/scan
 ```
 
-## Interactive Mode
+---
 
-The interactive mode launches automatically, or with the `-i` or `--interactive` flag:
+## 🤝 Contributing
 
-```bash
-reclaim ~/Documents -i
-```
+Contributions are welcome!  
+Please see the [Contributing Guide](CONTRIBUTING.md) for details.
 
-Non-interactive mode can be enabled (prints a simpler output with very low overhead) with `--no-interactive`
+---
 
-```bash
-reclaim ~/Documents --no-interactive
-```
+## 📜 License
 
-### Keyboard Shortcuts
+This project is licensed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for full details.
 
-| Key       | Action                    |
-|-----------|---------------------------|
-| F         | Switch to Files view      |
-| D         | Switch to Directories view|
-| S         | Sort items                |
-| R         | Refresh scan              |
-| Delete    | Delete selected item      |
-| ?         | Show help                 |
-| Q         | Quit application          |
-| Arrow keys| Navigate through items    |
+---
 
-### Features
-
-- **Tabbed Interface**: Toggle between Files and Directories views
-- **Sorting**: Sort items by size (default), name, or path
-- **File Management**: Delete files and directories with confirmation
-- **Selenized Dark Theme**: Easy on the eyes for extended use, or flip to the palette of your choice thanks to textual (ctrl+p)
-
-## Contributing
-
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+<p align="center">
+  <sub>Built with ❤️ for those who love clean disks and clean code.</sub>
+</p>
