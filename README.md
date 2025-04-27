@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/pypi/dm/reclaimed?style=flat&logo=pypi&logoColor=white&label=Downloads&labelColor=005da7&color=blue" alt="PyPI Downloads" />
-  <img src="https://img.shields.io/github/license/taylorwilsdon/reddacted?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue" alt="License" />
+  <img src="https://img.shields.io/github/license/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue" alt="License" />
   <a href="https://github.com/taylorwilsdon">
     <img src="https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-blue?style=flat&logo=shield&logoColor=white&labelColor=555" alt="Privacy Shield" />
   </a>
