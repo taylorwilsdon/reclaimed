@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import List, Optional
+from datetime import datetime # Import datetime
 
 from rich.console import Console
 from rich.table import Table
@@ -43,6 +44,7 @@ class TableFormatter:
         )
 
         table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
+        table.add_column("Last Modified", style=GREEN, no_wrap=True) # Added column
         table.add_column("Storage", style=YELLOW, no_wrap=True)
         table.add_column("Path", style=BASE0)
 
@@ -54,8 +56,15 @@ class TableFormatter:
 
             storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
             storage_cell = Text(storage_status, style=BLUE if file_info.is_icloud else GREEN)
+            # Format timestamp
+            last_modified_str = datetime.fromtimestamp(file_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
 
-            table.add_row(format_size(file_info.size), storage_cell, str(rel_path))
+            table.add_row(
+                format_size(file_info.size),
+                last_modified_str, # Added formatted timestamp
+                storage_cell,
+                str(rel_path)
+            )
 
         return table
 
@@ -79,6 +88,7 @@ class TableFormatter:
         )
 
         table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
+        table.add_column("Last Modified", style=GREEN, no_wrap=True) # Added column
         table.add_column("Storage", style=YELLOW, no_wrap=True)
         table.add_column("Path", style=BASE0)
 
@@ -90,8 +100,14 @@ class TableFormatter:
 
             storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
             storage_cell = Text(storage_status, style=BLUE if dir_info.is_icloud else GREEN)
+            last_modified_str = datetime.fromtimestamp(dir_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
 
-            table.add_row(format_size(dir_info.size), storage_cell, str(rel_path))
+            table.add_row(
+                format_size(dir_info.size),
+                last_modified_str, # Added formatted timestamp
+                storage_cell,
+                str(rel_path)
+            )
 
         return table
 

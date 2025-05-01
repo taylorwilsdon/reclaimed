@@ -108,14 +108,14 @@ class FileSystemOperations:
             raise IOError(path, str(e), e) from e
 
     @classmethod
-    def get_path_info(cls, path: Path) -> Tuple[int, bool, bool]:
-        """Get size and type information for a path.
+    def get_path_info(cls, path: Path) -> Tuple[int, bool, bool, float]:
+        """Get size, type, and last modified time information for a path.
 
         Args:
             path: Path to check
 
         Returns:
-            Tuple of (size, is_file, is_dir)
+            Tuple of (size, is_file, is_dir, last_modified_timestamp)
 
         Raises:
             AccessError: If path can't be accessed
@@ -127,6 +127,7 @@ class FileSystemOperations:
                 stat_result.st_size,
                 stat.S_ISREG(stat_result.st_mode),
                 stat.S_ISDIR(stat_result.st_mode),
+                stat_result.st_mtime,  # Added last modified timestamp
             )
         except OSError as e:
             raise AccessError(path, f"Failed to get path info: {e}", e) from e

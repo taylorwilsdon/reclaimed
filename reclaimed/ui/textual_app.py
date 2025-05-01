@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -92,6 +93,7 @@ class SortOptions(ModalScreen):
             yield Static("Sort by:", id="sort-title")
             with RadioSet(id="sort-options"):
                 yield RadioButton("Size (largest first)", id="sort-size", value=True)
+                yield RadioButton("Last Modified (newest first)", id="sort-modified") # Added sort option
                 yield RadioButton("Name (A-Z)", id="sort-name")
                 yield RadioButton("Path (A-Z)", id="sort-path")
 
@@ -164,13 +166,15 @@ class ReclaimedApp(App):
             # Directories section
             yield Static("[bold]Largest Directories[/bold]", id="dirs-section-header")
             dirs_table = DataTable(id="dirs-table")
-            dirs_table.add_columns("Size", "Storage", "Path")
+            # Add "Last Modified" column
+            dirs_table.add_columns("Size", "Last Modified", "Storage", "Path")
             yield dirs_table
 
             # Files section
             yield Static("[bold]Largest Files[/bold]", id="files-section-header")
             files_table = DataTable(id="files-table")
-            files_table.add_columns("Size", "Storage", "Path")
+            # Add "Last Modified" column
+            files_table.add_columns("Size", "Last Modified", "Storage", "Path")
             yield files_table
 
         with Horizontal(id="footer-container"):
@@ -588,9 +592,15 @@ class ReclaimedApp(App):
 
         storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
         storage_cell = Text(storage_status, style="#268bd2" if item_info.is_icloud else "#859900")
+        # Format timestamp
+        last_modified_str = datetime.fromtimestamp(item_info.last_modified).strftime('%y-%m-%d %H:%M')
 
         table.add_row(
-            format_size(item_info.size), storage_cell, display_path, key=str(item_info.path)
+            format_size(item_info.size),
+            last_modified_str,
+            storage_cell,
+            display_path,
+            key=str(item_info.path)
         )
 
     # Track current sort state to avoid redundant sorts
@@ -611,6 +621,7 @@ class ReclaimedApp(App):
         # Define sort keys based on method
         sort_keys = {
             "sort-size": lambda x: -x.size,  # Negative for descending order
+            "sort-modified": lambda x: -x.last_modified, # Negative for descending order (newest first)
             "sort-name": lambda x: x.path.name.lower(),
             "sort-path": lambda x: str(x.path).lower(),
         }
@@ -678,8 +689,8 @@ class ReclaimedApp(App):
                     self.notify("Could not get row data", timeout=5)
                     return
 
-                # The path is stored in the last column
-                path_str = row_data[2]  # [size, storage, path]
+                # The path is stored in the last column (index 3 after adding Last Modified)
+                path_str = row_data[3]  # [size, last_modified, storage, path]
 
                 # Find the matching item in our data to ensure we have the correct path
                 items = self.largest_files if self.current_focus == "files" else self.largest_dirs
