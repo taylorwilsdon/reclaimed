@@ -10,6 +10,7 @@ class FileInfo(NamedTuple):
 
     path: Path
     size: int
+    last_modified: float  # Timestamp (seconds since epoch)
     is_icloud: bool = False
 
 

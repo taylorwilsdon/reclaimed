@@ -79,7 +79,8 @@ class DiskScanner:
             # Start with frequent calculations, then reduce frequency based on file count
             dir_calc_interval = 1.0  # Default: Calculate directory sizes once per second
 
-            async for path, is_file, size in self._walk_directory_async(root_path):
+            # Unpack the new last_modified value
+            async for path, is_file, size, last_modified in self._walk_directory_async(root_path):
                 if is_file:
                     try:
                         # Create file info directly with the size we already have
@@ -88,7 +89,8 @@ class DiskScanner:
                             and self.options.icloud_base in path.parents
                             or "Mobile Documents" in str(path)
                         )
-                        file_info = FileInfo(path, size, is_icloud)
+                        # Include last_modified in FileInfo creation
+                        file_info = FileInfo(path, size, last_modified, is_icloud)
 
                         # Update directory sizes incrementally
                         self._update_dir_sizes(path, size, is_icloud)
@@ -189,7 +191,8 @@ class DiskScanner:
             # Collect all files first
             files: List[FileInfo] = []
 
-            for path, is_file, size in self._walk_directory(root_path):
+            # Unpack the new last_modified value
+            for path, is_file, size, last_modified in self._walk_directory(root_path):
                 if is_file:
                     try:
                         # Create file info directly with the size we already have
@@ -198,7 +201,8 @@ class DiskScanner:
                             and self.options.icloud_base in path.parents
                             or "Mobile Documents" in str(path)
                         )
-                        file_info = FileInfo(path, size, is_icloud)
+                        # Include last_modified in FileInfo creation
+                        file_info = FileInfo(path, size, last_modified, is_icloud)
 
                         # Update directory sizes incrementally
                         self._update_dir_sizes(path, size, is_icloud)
@@ -227,14 +231,14 @@ class DiskScanner:
         except KeyboardInterrupt:
             raise ScanInterruptedError() from None
 
-    async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int]]:
+    async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int, float]]:
         """Asynchronously walk directory tree with adaptive traversal.
 
         Args:
             path: Directory to walk
 
         Yields:
-            Tuple of (path, is_file, size) for each path encountered
+            Tuple of (path, is_file, size, last_modified) for each path encountered
         """
         try:
             # Process directories in batches for better performance
@@ -259,11 +263,12 @@ class DiskScanner:
                                 if entry.name not in self.options.skip_dirs:
                                     dirs_to_process.append(Path(entry.path))
                             else:
-                                # Get file size directly from DirEntry for better performance
+                                # Get file stats directly from DirEntry for better performance
                                 try:
-                                    # Use stat from DirEntry which is faster than Path.stat()
-                                    size = entry.stat().st_size
-                                    yield Path(entry.path), True, size
+                                    stat_result = entry.stat() # Get stat result once
+                                    size = stat_result.st_size
+                                    last_modified = stat_result.st_mtime # Get timestamp
+                                    yield Path(entry.path), True, size, last_modified # Yield timestamp
                                     processed_count += 1
 
                                     # After processing 500 files, we know it's not a small directory
@@ -284,8 +289,12 @@ class DiskScanner:
                     self._handle_access_error(current_dir, e)
 
                 # Yield the directory itself after processing its contents
-                # Use 0 size for directories as we calculate their size separately
-                yield current_dir, False, 0
+                try:
+                    # Get stat for the directory to yield its mtime
+                    dir_stat = current_dir.stat()
+                    yield current_dir, False, 0, dir_stat.st_mtime
+                except (OSError, AttributeError) as e:
+                    self._handle_access_error(current_dir, e) # Handle potential error getting stat
 
                 # For small directories, don't yield between directories to complete faster
                 # For larger directories, yield occasionally to keep UI responsive
@@ -295,11 +304,11 @@ class DiskScanner:
         except (AccessError, OSError) as e:
             self._handle_access_error(path, e)
 
-    def _walk_directory(self, path: Path) -> Iterator[Tuple[Path, bool, int]]:
+    def _walk_directory(self, path: Path) -> Iterator[Tuple[Path, bool, int, float]]:
         """Synchronous version of _walk_directory_async.
 
         Yields:
-            Tuple of (path, is_file, size) for each path encountered
+            Tuple of (path, is_file, size, last_modified) for each path encountered
         """
         try:
             # Use os.scandir directly for better performance
@@ -315,13 +324,19 @@ class DiskScanner:
                             # Recursively process subdirectory
                             yield from self._walk_directory(entry_path)
 
-                        # Yield directory itself with size 0 (we calculate dir sizes separately)
-                        yield entry_path, False, 0
-                    else:
-                        # Get file size directly from DirEntry for better performance
+                        # Yield directory itself with size 0 and its mtime
                         try:
-                            size = entry.stat().st_size
-                            yield entry_path, True, size
+                            dir_stat = entry_path.stat()
+                            yield entry_path, False, 0, dir_stat.st_mtime
+                        except (OSError, AttributeError) as e:
+                            self._handle_access_error(entry_path, e)
+                    else:
+                        # Get file stats directly from DirEntry for better performance
+                        try:
+                            stat_result = entry.stat() # Get stat result once
+                            size = stat_result.st_size
+                            last_modified = stat_result.st_mtime # Get timestamp
+                            yield entry_path, True, size, last_modified # Yield timestamp
                         except (OSError, AttributeError) as e:
                             self._handle_access_error(entry_path, e)
                 except (OSError, AttributeError) as e:
@@ -372,12 +387,18 @@ class DiskScanner:
         Returns:
             List of directories sorted by size
         """
-        # Convert directory sizes to FileInfo objects
-        dirs = [
-            FileInfo(p, s, c)
-            for p, (s, c) in self._dir_sizes.items()
-            if p.is_dir() and (p == root or root in p.parents or p in root.parents)
-        ]
+        # Convert directory sizes to FileInfo objects, fetching mtime
+        dirs = []
+        for p, (s, c) in self._dir_sizes.items():
+            # Apply the same filtering as before
+            if p.is_dir() and (p == root or root in p.parents or p in root.parents):
+                try:
+                    # Get the last modified time for the directory
+                    last_modified = os.stat(p).st_mtime
+                except OSError:
+                    # Default to 0.0 if stat fails
+                    last_modified = 0.0
+                dirs.append(FileInfo(p, s, last_modified, c))
 
         # Sort by size (largest first)
         dirs.sort(key=lambda x: x.size, reverse=True)
