@@ -9,6 +9,10 @@
   <a href="https://pepy.tech/projects/reclaimed"><img src="https://static.pepy.tech/badge/reclaimed" alt="PyPI Downloads"></a>
 </p>
 
+<div align="center">
+ <img width="50%" src="https://github.com/user-attachments/assets/7f02903b-24ca-4415-a929-5a8f89caa99d" />
+</div>
+
 ---
 
 **reclaimed** is a cross-platform, ultra-lightweight, and surprisingly powerful command-line tool for analyzing disk usage — with special handling for iCloud storage on macOS.  
