@@ -48,7 +48,12 @@ https://github.com/user-attachments/assets/1aae04e7-3201-414d-a1e3-6ea5d55bd691
 - pip (Python package installer)
 - (Optional but recommended) Use a virtual environment
 
-### Install via pip (preferred)
+### uvx (fastest)
+```bash
+uvx reclaimed
+```
+
+### Install via pip
 ```bash
 pip install reclaimed
 ```
@@ -58,16 +63,11 @@ pip install reclaimed
 brew install taylorwilsdon/tap/reclaimed
 ```
 
-### Install from Source
+### Build from Source
 ```bash
 git clone https://github.com/taylorwilsdon/reclaimed.git
 cd reclaimed
 pip install -e .
-```
-
-For development:
-```bash
-pip install -r requirements.txt
 ```
 
 ---
@@ -99,6 +99,23 @@ reclaimed ~/Documents --output results.json
 
 ---
 
+## 🎛️ Interactive Mode
+
+Interactive mode is on by default. Non-interactive mode (minimal output) can be forced with:
+
+```bash
+reclaimed ~/Documents --no-interactive
+```
+
+### Keyboard Shortcuts
+| Key | Action | | Key | Action |
+|-----|--------|-|-----|--------|
+| `F` | Files view | | `Delete` | Remove item |
+| `D` | Directories view | | `R` | Refresh scan |
+| `S` | Sort items | | `Q` | Quit |
+
+---
+
 ## 📊 Output
 
 ### CLI Mode
@@ -113,35 +130,6 @@ reclaimed ~/Documents --output results.json
 - Sort items by size, name, or path
 - Delete files/directories with confirmation
 - Refresh scan results
-
----
-
-## 🎛️ Interactive Mode
-
-Launch automatically or with `-i` / `--interactive`:
-
-```bash
-reclaimed ~/Documents -i
-```
-
-Non-interactive mode (minimal output) can be forced with:
-
-```bash
-reclaimed ~/Documents --no-interactive
-```
-
-### Keyboard Shortcuts
-
-| Key        | Action                      |
-|------------|------------------------------|
-| `F`        | Switch to Files view          |
-| `D`        | Switch to Directories view    |
-| `S`        | Sort items                    |
-| `R`        | Refresh scan                  |
-| `Delete`   | Delete selected item          |
-| `?`        | Show help                     |
-| `Q`        | Quit application              |
-| Arrow keys | Navigate through items        |
 
 ---
 
