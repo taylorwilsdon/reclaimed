@@ -26,7 +26,7 @@ Fully supports **Linux**, **macOS**, and **Windows**.
 - 🚀 **Legitimately Performant**: Fast recursive directory scanning with ultra-efficient progress updates.
   - Carefully tuned repaint frequency — optimized to avoid slowing results by even 5ms.
   - Separate thread for the clock to keep real-time updates buttery smooth.
-- ☁️ **iCloud Smartness**: Detects and handles iCloud Drive symlink files vs local storage (macOS).
+- ☁️ **iCloud Aware**: Detects and handles iCloud Drive symlink files vs local storage (macOS).
 - 📊 **Beautiful UI**: Powered by [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual).
   - Full keyboard navigation, mouse support, and customizable themes.
 - 🖥️ **Interactive Terminal UI**: Browse, manage, and delete files/directories with ease.
