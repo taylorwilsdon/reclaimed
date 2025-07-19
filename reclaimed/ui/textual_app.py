@@ -125,6 +125,8 @@ class ReclaimedApp(App):
         Binding("tab", "toggle_focus", "Toggle Focus"),
         Binding("s", "sort", "Sort"),
         Binding("r", "refresh", "Refresh"),
+        Binding("h", "hide_selected", "Hide"),
+        Binding("u", "show_hidden", "Unhide All"),
         Binding("delete", "delete_selected", "Delete"),
         Binding("?", "help", "Help"),
     ]
@@ -149,6 +151,7 @@ class ReclaimedApp(App):
         self.current_focus = "files"  # Tracks which table has focus
         self.sort_method = "sort-size"  # Default sort method
         self.progress_manager = None  # Will be initialized after mount
+        self.hidden_dirs: set = set()  # Directories hidden from current view
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
@@ -525,8 +528,14 @@ class ReclaimedApp(App):
         # Use the larger of calculated max or user-specified max
         max_items = max(user_max, max_items)
 
+        # Filter out hidden items first
+        filtered_items = []
+        for item in items:
+            if not self._is_hidden(item.path):
+                filtered_items.append(item)
+        
         # Limit the number of items to display
-        display_items = items[: min(max_items, len(items))]
+        display_items = filtered_items[: min(max_items, len(filtered_items))]
 
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
@@ -603,6 +612,31 @@ class ReclaimedApp(App):
             key=str(item_info.path)
         )
 
+    def _is_hidden(self, path: Path) -> bool:
+        """Check if a path or any of its parents is hidden.
+        
+        Args:
+            path: Path to check
+            
+        Returns:
+            True if the path should be hidden, False otherwise
+        """
+        # Check if this exact path is hidden
+        if path in self.hidden_dirs:
+            return True
+            
+        # Check if any parent directory is hidden
+        for hidden_dir in self.hidden_dirs:
+            try:
+                # If the path is inside a hidden directory, hide it
+                if hidden_dir in path.parents or hidden_dir == path:
+                    return True
+            except (OSError, ValueError):
+                # Handle any path comparison errors
+                continue
+                
+        return False
+
     # Track current sort state to avoid redundant sorts
     _current_sort_method = "sort-size"
     _files_sorted = False
@@ -672,6 +706,103 @@ class ReclaimedApp(App):
 
     def action_refresh(self) -> None:
         """Refresh the directory scan."""
+        # Clear hidden directories on refresh
+        self.hidden_dirs.clear()
+        self.scan_directory()
+
+    def _update_parent_sizes_on_hide(self, hidden_path: Path, hidden_size: int) -> None:
+        """Update parent directory sizes when a directory is hidden.
+        
+        Args:
+            hidden_path: Path of the hidden directory
+            hidden_size: Size of the hidden directory to subtract
+        """
+        # Create updated directory list with adjusted sizes
+        updated_dirs = []
+        
+        for dir_info in self.largest_dirs:
+            # Check if this directory is a parent of the hidden directory
+            try:
+                if hidden_path != dir_info.path and hidden_path.is_relative_to(dir_info.path):
+                    # Create new FileInfo with reduced size
+                    new_size = max(0, dir_info.size - hidden_size)
+                    updated_dir = FileInfo(
+                        path=dir_info.path,
+                        size=new_size,
+                        last_modified=dir_info.last_modified,
+                        is_icloud=dir_info.is_icloud
+                    )
+                    updated_dirs.append(updated_dir)
+                else:
+                    # Keep the original directory info
+                    updated_dirs.append(dir_info)
+            except (ValueError, OSError):
+                # Handle any path comparison errors, keep original
+                updated_dirs.append(dir_info)
+        
+        # Replace the directories list with updated one
+        self.largest_dirs = updated_dirs
+
+    def action_hide_selected(self) -> None:
+        """Hide the selected directory from the current view."""
+        # Only works for directories
+        if self.current_focus != "dirs":
+            self.notify("Hiding only works for directories. Switch to directories view (D) first.", timeout=3)
+            return
+            
+        table = self.query_one("#dirs-table")
+        
+        # Check if a row is selected
+        if table.cursor_coordinate is not None:
+            row = table.cursor_coordinate.row
+            if row < len(table.rows):
+                # Get the actual displayed path from the row data
+                row_data = table.get_row_at(row)
+                if not row_data:
+                    self.notify("Could not get row data", timeout=3)
+                    return
+
+                # The path is stored in the last column
+                path_str = row_data[3]  # [size, last_modified, storage, path]
+                
+                # Find the matching item in our data
+                matching_items = [item for item in self.largest_dirs if str(item.path) == path_str]
+                
+                if not matching_items:
+                    self.notify("Selected directory not found in data", timeout=3)
+                    return
+                
+                # Add to hidden directories
+                path = matching_items[0].path
+                hidden_size = matching_items[0].size
+                self.hidden_dirs.add(path)
+                
+                # Update parent directory sizes
+                self._update_parent_sizes_on_hide(path, hidden_size)
+                
+                # Force update the tables to reflect the hidden directory
+                # Clear change detection cache to force refresh
+                self._last_table_items.clear()
+                self.update_tables()
+                
+                self.notify(f"Hidden: {path.name} ({format_size(hidden_size)})", timeout=3)
+                
+                # Focus back to the table
+                self.focus_active_table()
+        else:
+            self.notify("No directory selected. Use arrow keys to select a directory first.", timeout=3)
+
+    def action_show_hidden(self) -> None:
+        """Unhide all hidden directories by refreshing the scan."""
+        if not self.hidden_dirs:
+            self.notify("No directories are currently hidden.", timeout=3)
+            return
+            
+        hidden_count = len(self.hidden_dirs)
+        
+        # Clear hidden directories and refresh scan to restore original sizes
+        self.hidden_dirs.clear()
+        self.notify(f"Unhiding {hidden_count} director{'y' if hidden_count == 1 else 'ies'} and refreshing scan...", timeout=3)
         self.scan_directory()
 
     def action_delete_selected(self) -> None:
@@ -751,7 +882,9 @@ class ReclaimedApp(App):
         [#268bd2]Actions:[/]
         - Delete: Delete selected item
         - S: Sort items
-        - R: Refresh scan
+        - H: Hide selected directory (dirs only)
+        - U: Unhide all directories
+        - R: Refresh scan (clears hidden dirs)
         - Q: Quit application
 
         [#268bd2]Selection:[/]

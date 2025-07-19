@@ -231,6 +231,37 @@ class DiskScanner:
         except KeyboardInterrupt:
             raise ScanInterruptedError() from None
 
+    def _should_skip_directory(self, dir_path: Path) -> bool:
+        """Check if a directory should be skipped based on skip_dirs patterns.
+
+        Args:
+            dir_path: Path to the directory to check
+
+        Returns:
+            True if the directory should be skipped, False otherwise
+        """
+        if not self.options.skip_dirs:
+            return False
+
+        dir_name = dir_path.name
+        dir_str = str(dir_path)
+
+        for skip_pattern in self.options.skip_dirs:
+            # Exact name match (original behavior)
+            if dir_name == skip_pattern:
+                return True
+            
+            # Path pattern matching - check if pattern is anywhere in the path
+            if skip_pattern in dir_str:
+                return True
+            
+            # Check if pattern matches any parent directory name
+            for parent in dir_path.parents:
+                if parent.name == skip_pattern:
+                    return True
+        
+        return False
+
     async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int, float]]:
         """Asynchronously walk directory tree with adaptive traversal.
 
@@ -260,7 +291,7 @@ class DiskScanner:
                                 continue
 
                             if entry.is_dir():
-                                if entry.name not in self.options.skip_dirs:
+                                if not self._should_skip_directory(Path(entry.path)):
                                     dirs_to_process.append(Path(entry.path))
                             else:
                                 # Get file stats directly from DirEntry for better performance
@@ -320,7 +351,7 @@ class DiskScanner:
                         continue
 
                     if entry.is_dir():
-                        if entry.name not in self.options.skip_dirs:
+                        if not self._should_skip_directory(entry_path):
                             # Recursively process subdirectory
                             yield from self._walk_directory(entry_path)
 
