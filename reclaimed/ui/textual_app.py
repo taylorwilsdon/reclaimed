@@ -131,6 +131,12 @@ class ReclaimedApp(App):
         Binding("?", "help", "Help"),
     ]
 
+    # Table column indices - keep these constants in sync with add_columns calls
+    COL_SIZE = 0
+    COL_LAST_MODIFIED = 1
+    COL_STORAGE = 2
+    COL_PATH = 3
+
     def __init__(
         self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
     ):
@@ -445,10 +451,14 @@ class ReclaimedApp(App):
             # For directory tables, apply special filtering
             if table_id == "#dirs-table":
                 # Skip parent directories with the same size as the scan directory
-                if item.path in self.path.parents:
-                    # Skip if parent directory has the same size as the scan directory (within 1%)
-                    if scan_dir_size > 0 and abs(item.size - scan_dir_size) / scan_dir_size < 0.01:
-                        continue
+                try:
+                    if self.path.is_relative_to(item.path) and item.path != self.path:
+                        # Skip if parent directory has the same size as the scan directory (within 1%)
+                        if scan_dir_size > 0 and abs(item.size - scan_dir_size) / scan_dir_size < 0.01:
+                            continue
+                except (OSError, ValueError):
+                    # Handle path comparison errors (e.g., different drives on Windows)
+                    pass
 
                 # Skip root and top-level directories unless directly scanned
                 if (str(item.path) == '/' or
@@ -456,8 +466,12 @@ class ReclaimedApp(App):
                     continue
 
             # Skip distant parent directories for any table
-            if item.path in self.path.parents and len(self.path.parts) - len(item.path.parts) > 2:
-                continue
+            try:
+                if self.path.is_relative_to(item.path) and item.path != self.path and len(self.path.parts) - len(item.path.parts) > 2:
+                    continue
+            except (OSError, ValueError):
+                # Handle path comparison errors (e.g., different drives on Windows)
+                pass
 
             filtered_items.append(item)
 
@@ -557,18 +571,22 @@ class ReclaimedApp(App):
             # This is the key fix for the duplicate directory issue:
             # When scanning a directory, parent directories often show the same size
             # because they contain all the same content
-            if item_info.path in self.path.parents:
-                # Find the scanned directory size
-                scan_dir_size = 0
-                for dir_info in self.largest_dirs:
-                    if dir_info.path == self.path:
-                        scan_dir_size = dir_info.size
-                        break
+            try:
+                if self.path.is_relative_to(item_info.path) and item_info.path != self.path:
+                    # Find the scanned directory size
+                    scan_dir_size = 0
+                    for dir_info in self.largest_dirs:
+                        if dir_info.path == self.path:
+                            scan_dir_size = dir_info.size
+                            break
 
-                # Skip if parent directory has the same size as the scan directory
-                # Allow a small margin for rounding differences (1%)
-                if scan_dir_size > 0 and abs(item_info.size - scan_dir_size) / scan_dir_size < 0.01:
-                    return
+                    # Skip if parent directory has the same size as the scan directory
+                    # Allow a small margin for rounding differences (1%)
+                    if scan_dir_size > 0 and abs(item_info.size - scan_dir_size) / scan_dir_size < 0.01:
+                        return
+            except (OSError, ValueError):
+                # Handle path comparison errors (e.g., different drives on Windows)
+                pass
 
             # Skip root and top-level directories unless directly scanned
             if (str(item_info.path) == '/' or
@@ -584,10 +602,10 @@ class ReclaimedApp(App):
             if item_info.path == self.path:
                 # This is the directory being scanned
                 display_path = absolute_path
-            elif self.path in item_info.path.parents:
+            elif item_info.path.is_relative_to(self.path) and item_info.path != self.path:
                 # This is a subdirectory of the scanned directory
                 display_path = absolute_path
-            elif item_info.path in self.path.parents:
+            elif self.path.is_relative_to(item_info.path) and item_info.path != self.path:
                 # Skip parent directories that are too far up the tree
                 if len(self.path.parts) - len(item_info.path.parts) > 2:
                     return
@@ -595,8 +613,8 @@ class ReclaimedApp(App):
             else:
                 # Other paths outside the scan hierarchy
                 display_path = absolute_path
-        except Exception:
-            # Fallback for any path resolution errors
+        except (OSError, ValueError):
+            # Handle path comparison errors (e.g., different drives on Windows)
             display_path = absolute_path
 
         storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
@@ -625,11 +643,11 @@ class ReclaimedApp(App):
         if path in self.hidden_dirs:
             return True
             
-        # Check if any parent directory is hidden
+        # Check if any parent directory is hidden using more efficient path.is_relative_to()
         for hidden_dir in self.hidden_dirs:
             try:
                 # If the path is inside a hidden directory, hide it
-                if hidden_dir in path.parents or hidden_dir == path:
+                if path.is_relative_to(hidden_dir):
                     return True
             except (OSError, ValueError):
                 # Handle any path comparison errors
@@ -762,8 +780,8 @@ class ReclaimedApp(App):
                     self.notify("Could not get row data", timeout=3)
                     return
 
-                # The path is stored in the last column
-                path_str = row_data[3]  # [size, last_modified, storage, path]
+                # The path is stored in the path column
+                path_str = row_data[self.COL_PATH]
                 
                 # Find the matching item in our data
                 matching_items = [item for item in self.largest_dirs if str(item.path) == path_str]
@@ -820,8 +838,8 @@ class ReclaimedApp(App):
                     self.notify("Could not get row data", timeout=5)
                     return
 
-                # The path is stored in the last column (index 3 after adding Last Modified)
-                path_str = row_data[3]  # [size, last_modified, storage, path]
+                # The path is stored in the path column
+                path_str = row_data[self.COL_PATH]
 
                 # Find the matching item in our data to ensure we have the correct path
                 items = self.largest_files if self.current_focus == "files" else self.largest_dirs

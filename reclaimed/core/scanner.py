@@ -244,20 +244,16 @@ class DiskScanner:
             return False
 
         dir_name = dir_path.name
-        dir_str = str(dir_path)
 
         for skip_pattern in self.options.skip_dirs:
             # Exact name match (original behavior)
             if dir_name == skip_pattern:
                 return True
             
-            # Path pattern matching - check if pattern is anywhere in the path
-            if skip_pattern in dir_str:
-                return True
-            
-            # Check if pattern matches any parent directory name
-            for parent in dir_path.parents:
-                if parent.name == skip_pattern:
+            # Path component matching - check if pattern matches any path component
+            # This avoids false positives from substring matching on full paths
+            for part in dir_path.parts:
+                if part == skip_pattern:
                     return True
         
         return False
