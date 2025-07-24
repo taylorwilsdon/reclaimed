@@ -249,13 +249,13 @@ class DiskScanner:
             # Exact name match (original behavior)
             if dir_name == skip_pattern:
                 return True
-            
+
             # Path component matching - check if pattern matches any path component
             # This avoids false positives from substring matching on full paths
             for part in dir_path.parts:
                 if part == skip_pattern:
                     return True
-        
+
         return False
 
     async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int, float]]:
