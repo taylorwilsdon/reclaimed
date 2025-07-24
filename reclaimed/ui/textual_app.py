@@ -125,9 +125,17 @@ class ReclaimedApp(App):
         Binding("tab", "toggle_focus", "Toggle Focus"),
         Binding("s", "sort", "Sort"),
         Binding("r", "refresh", "Refresh"),
+        Binding("h", "hide_selected", "Hide"),
+        Binding("u", "show_hidden", "Unhide All"),
         Binding("delete", "delete_selected", "Delete"),
         Binding("?", "help", "Help"),
     ]
+
+    # Table column indices - keep these constants in sync with add_columns calls
+    COL_SIZE = 0
+    COL_LAST_MODIFIED = 1
+    COL_STORAGE = 2
+    COL_PATH = 3
 
     def __init__(
         self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
@@ -149,6 +157,8 @@ class ReclaimedApp(App):
         self.current_focus = "files"  # Tracks which table has focus
         self.sort_method = "sort-size"  # Default sort method
         self.progress_manager = None  # Will be initialized after mount
+        self.hidden_dirs: set = set()  # Directories hidden from current view
+        self._hidden_cache: dict = {}  # Cache for _is_hidden results
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
@@ -442,10 +452,14 @@ class ReclaimedApp(App):
             # For directory tables, apply special filtering
             if table_id == "#dirs-table":
                 # Skip parent directories with the same size as the scan directory
-                if item.path in self.path.parents:
-                    # Skip if parent directory has the same size as the scan directory (within 1%)
-                    if scan_dir_size > 0 and abs(item.size - scan_dir_size) / scan_dir_size < 0.01:
-                        continue
+                try:
+                    if self.path.is_relative_to(item.path) and item.path != self.path:
+                        # Skip if parent directory has the same size as the scan directory (within 1%)
+                        if scan_dir_size > 0 and abs(item.size - scan_dir_size) / scan_dir_size < 0.01:
+                            continue
+                except (OSError, ValueError):
+                    # Handle path comparison errors (e.g., different drives on Windows)
+                    pass
 
                 # Skip root and top-level directories unless directly scanned
                 if (str(item.path) == '/' or
@@ -453,8 +467,12 @@ class ReclaimedApp(App):
                     continue
 
             # Skip distant parent directories for any table
-            if item.path in self.path.parents and len(self.path.parts) - len(item.path.parts) > 2:
-                continue
+            try:
+                if self.path.is_relative_to(item.path) and item.path != self.path and len(self.path.parts) - len(item.path.parts) > 2:
+                    continue
+            except (OSError, ValueError):
+                # Handle path comparison errors (e.g., different drives on Windows)
+                pass
 
             filtered_items.append(item)
 
@@ -525,8 +543,14 @@ class ReclaimedApp(App):
         # Use the larger of calculated max or user-specified max
         max_items = max(user_max, max_items)
 
+        # Filter out hidden items first
+        filtered_items = []
+        for item in items:
+            if not self._is_hidden(item.path):
+                filtered_items.append(item)
+
         # Limit the number of items to display
-        display_items = items[: min(max_items, len(items))]
+        display_items = filtered_items[: min(max_items, len(filtered_items))]
 
         # Render all items at once - Textual's DataTable has built-in virtualization
         for item_info in display_items:
@@ -548,18 +572,22 @@ class ReclaimedApp(App):
             # This is the key fix for the duplicate directory issue:
             # When scanning a directory, parent directories often show the same size
             # because they contain all the same content
-            if item_info.path in self.path.parents:
-                # Find the scanned directory size
-                scan_dir_size = 0
-                for dir_info in self.largest_dirs:
-                    if dir_info.path == self.path:
-                        scan_dir_size = dir_info.size
-                        break
+            try:
+                if self.path.is_relative_to(item_info.path) and item_info.path != self.path:
+                    # Find the scanned directory size
+                    scan_dir_size = 0
+                    for dir_info in self.largest_dirs:
+                        if dir_info.path == self.path:
+                            scan_dir_size = dir_info.size
+                            break
 
-                # Skip if parent directory has the same size as the scan directory
-                # Allow a small margin for rounding differences (1%)
-                if scan_dir_size > 0 and abs(item_info.size - scan_dir_size) / scan_dir_size < 0.01:
-                    return
+                    # Skip if parent directory has the same size as the scan directory
+                    # Allow a small margin for rounding differences (1%)
+                    if scan_dir_size > 0 and abs(item_info.size - scan_dir_size) / scan_dir_size < 0.01:
+                        return
+            except (OSError, ValueError):
+                # Handle path comparison errors (e.g., different drives on Windows)
+                pass
 
             # Skip root and top-level directories unless directly scanned
             if (str(item_info.path) == '/' or
@@ -575,10 +603,10 @@ class ReclaimedApp(App):
             if item_info.path == self.path:
                 # This is the directory being scanned
                 display_path = absolute_path
-            elif self.path in item_info.path.parents:
+            elif item_info.path.is_relative_to(self.path) and item_info.path != self.path:
                 # This is a subdirectory of the scanned directory
                 display_path = absolute_path
-            elif item_info.path in self.path.parents:
+            elif self.path.is_relative_to(item_info.path) and item_info.path != self.path:
                 # Skip parent directories that are too far up the tree
                 if len(self.path.parts) - len(item_info.path.parts) > 2:
                     return
@@ -586,8 +614,8 @@ class ReclaimedApp(App):
             else:
                 # Other paths outside the scan hierarchy
                 display_path = absolute_path
-        except Exception:
-            # Fallback for any path resolution errors
+        except (OSError, ValueError):
+            # Handle path comparison errors (e.g., different drives on Windows)
             display_path = absolute_path
 
         storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
@@ -602,6 +630,36 @@ class ReclaimedApp(App):
             display_path,
             key=str(item_info.path)
         )
+
+    def _is_hidden(self, path: Path) -> bool:
+        """Check if a path or any of its parents is hidden.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if the path should be hidden, False otherwise
+        """
+        # Use cached result if available
+        path_str = str(path)
+        if path_str in self._hidden_cache:
+            return self._hidden_cache[path_str]
+
+        # Check if this exact path is hidden
+        if path in self.hidden_dirs:
+            self._hidden_cache[path_str] = True
+            return True
+
+        # Check parents from most specific to least specific
+        current_path = path
+        while current_path != current_path.parent:
+            current_path = current_path.parent
+            if current_path in self.hidden_dirs:
+                self._hidden_cache[path_str] = True
+                return True
+
+        self._hidden_cache[path_str] = False
+        return False
 
     # Track current sort state to avoid redundant sorts
     _current_sort_method = "sort-size"
@@ -672,6 +730,106 @@ class ReclaimedApp(App):
 
     def action_refresh(self) -> None:
         """Refresh the directory scan."""
+        # Clear hidden directories on refresh
+        self.hidden_dirs.clear()
+        self._hidden_cache.clear()
+        self.scan_directory()
+
+    def _update_parent_sizes_on_hide(self, hidden_path: Path, hidden_size: int) -> None:
+        """Update parent directory sizes when a directory is hidden.
+
+        Args:
+            hidden_path: Path of the hidden directory
+            hidden_size: Size of the hidden directory to subtract
+        """
+        # Create updated directory list with adjusted sizes
+        updated_dirs = []
+
+        for dir_info in self.largest_dirs:
+            # Check if this directory is a parent of the hidden directory
+            try:
+                if hidden_path != dir_info.path and hidden_path.is_relative_to(dir_info.path):
+                    # Create new FileInfo with reduced size
+                    new_size = max(0, dir_info.size - hidden_size)
+                    updated_dir = FileInfo(
+                        path=dir_info.path,
+                        size=new_size,
+                        last_modified=dir_info.last_modified,
+                        is_icloud=dir_info.is_icloud
+                    )
+                    updated_dirs.append(updated_dir)
+                else:
+                    # Keep the original directory info
+                    updated_dirs.append(dir_info)
+            except (ValueError, OSError):
+                # Handle any path comparison errors, keep original
+                updated_dirs.append(dir_info)
+
+        # Replace the directories list with updated one
+        self.largest_dirs = updated_dirs
+
+    def action_hide_selected(self) -> None:
+        """Hide the selected directory from the current view."""
+        # Only works for directories
+        if self.current_focus != "dirs":
+            self.notify("Hiding only works for directories. Switch to directories view (D) first.", timeout=3)
+            return
+
+        table = self.query_one("#dirs-table")
+
+        # Check if a row is selected
+        if table.cursor_coordinate is not None:
+            row = table.cursor_coordinate.row
+            if row < len(table.rows):
+                # Get the actual displayed path from the row data
+                row_data = table.get_row_at(row)
+                if not row_data:
+                    self.notify("Could not get row data", timeout=3)
+                    return
+
+                # The path is stored in the path column
+                path_str = row_data[self.COL_PATH]
+
+                # Find the matching item in our data
+                matching_items = [item for item in self.largest_dirs if str(item.path) == path_str]
+
+                if not matching_items:
+                    self.notify("Selected directory not found in data", timeout=3)
+                    return
+
+                # Add to hidden directories
+                path = matching_items[0].path
+                hidden_size = matching_items[0].size
+                self.hidden_dirs.add(path)
+                self._hidden_cache.clear()
+
+                # Update parent directory sizes
+                self._update_parent_sizes_on_hide(path, hidden_size)
+
+                # Force update the tables to reflect the hidden directory
+                # Clear change detection cache to force refresh
+                self._last_table_items.clear()
+                self.update_tables()
+
+                self.notify(f"Hidden: {path.name} ({format_size(hidden_size)})", timeout=3)
+
+                # Focus back to the table
+                self.focus_active_table()
+        else:
+            self.notify("No directory selected. Use arrow keys to select a directory first.", timeout=3)
+
+    def action_show_hidden(self) -> None:
+        """Unhide all hidden directories by refreshing the scan."""
+        if not self.hidden_dirs:
+            self.notify("No directories are currently hidden.", timeout=3)
+            return
+
+        hidden_count = len(self.hidden_dirs)
+
+        # Clear hidden directories and refresh scan to restore original sizes
+        self.hidden_dirs.clear()
+        self._hidden_cache.clear()
+        self.notify(f"Unhiding {hidden_count} director{'y' if hidden_count == 1 else 'ies'} and refreshing scan...", timeout=3)
         self.scan_directory()
 
     def action_delete_selected(self) -> None:
@@ -689,8 +847,8 @@ class ReclaimedApp(App):
                     self.notify("Could not get row data", timeout=5)
                     return
 
-                # The path is stored in the last column (index 3 after adding Last Modified)
-                path_str = row_data[3]  # [size, last_modified, storage, path]
+                # The path is stored in the path column
+                path_str = row_data[self.COL_PATH]
 
                 # Find the matching item in our data to ensure we have the correct path
                 items = self.largest_files if self.current_focus == "files" else self.largest_dirs
@@ -751,7 +909,9 @@ class ReclaimedApp(App):
         [#268bd2]Actions:[/]
         - Delete: Delete selected item
         - S: Sort items
-        - R: Refresh scan
+        - H: Hide selected directory (dirs only)
+        - U: Unhide all directories
+        - R: Refresh scan (clears hidden dirs)
         - Q: Quit application
 
         [#268bd2]Selection:[/]
