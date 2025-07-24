@@ -94,6 +94,9 @@ reclaimed ~/Documents
 # Show more results
 reclaimed ~/Documents --files 20 --dirs 15
 
+# Skip specific directories during scanning
+reclaimed ~/Documents --skip-dirs node_modules --skip-dirs __pycache__
+
 # Save results to JSON
 reclaimed ~/Documents --output results.json
 ```
@@ -102,8 +105,9 @@ reclaimed ~/Documents --output results.json
 | Option | Description |
 |:------|:------------|
 | `PATH` | Directory to scan (default: current directory) |
-| `-f, --files N` | Number of largest files to show (default: 10) |
-| `-d, --dirs N` | Number of largest directories to show (default: 10) |
+| `-f, --max-files N` | Number of largest files to show (default: 10) |
+| `-d, --max-dirs N` | Number of largest directories to show (default: 10) |
+| `-s, --skip-dirs DIR` | Additional directories to skip (can be specified multiple times) |
 | `-o, --output FILE` | Save results to a JSON file |
 | `-i, --interactive` | Launch the interactive Textual UI |
 
@@ -123,6 +127,7 @@ reclaimed ~/Documents --no-interactive
 | `F` | Files view | | `Delete` | Remove item |
 | `D` | Directories view | | `R` | Refresh scan |
 | `S` | Sort items | | `Q` | Quit |
+| `H` | Hide directory | | `U` | Unhide all directories |
 
 ---
 
