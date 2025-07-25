@@ -222,8 +222,12 @@ class ReclaimedApp(App):
         self._dirs_sorted = False
 
         # Show loading indicator
-        loading = self.query_one("#scan-progress")
-        loading.styles.display = "block"
+        try:
+            loading = self.query_one("#scan-progress")
+            loading.styles.display = "block"
+        except Exception:
+            # Loading indicator might not be mounted yet
+            pass
 
         # Start async scan with optimized worker function
         self.scan_task = self.run_worker(
@@ -238,17 +242,32 @@ class ReclaimedApp(App):
         last_ui_update = 0
         base_ui_update_interval = 0.5
 
-        # Get UI elements once
-        timer_display = self.query_one("#scan-timer")
-        count_display = self.query_one("#scan-count")
+        # Get UI elements once, with error handling
+        try:
+            timer_display = self.query_one("#scan-timer")
+            count_display = self.query_one("#scan-count")
+        except Exception:
+            # UI elements not mounted yet, wait a bit and retry
+            await asyncio.sleep(0.1)
+            try:
+                timer_display = self.query_one("#scan-timer")
+                count_display = self.query_one("#scan-count")
+            except Exception:
+                # Still not available, abort scan
+                self.notify("UI not ready, please try again", severity="error")
+                return
 
         # Create independent timer task
         async def update_timer():
             start = time.monotonic()
             while True:
-                elapsed = time.monotonic() - start
-                minutes, seconds = divmod(int(elapsed), 60)
-                timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
+                try:
+                    elapsed = time.monotonic() - start
+                    minutes, seconds = divmod(int(elapsed), 60)
+                    timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
+                except Exception:
+                    # Timer display might have been removed, stop updating
+                    break
                 await asyncio.sleep(0.05)  # Update 20 times per second for smooth display
 
         # Start timer task and store reference
@@ -275,7 +294,11 @@ class ReclaimedApp(App):
                     dirs_buffer = progress.dirs
 
                 # Update file count independently
-                count_display.update(f"Files: {progress.scanned:,}")
+                try:
+                    count_display.update(f"Files: {progress.scanned:,}")
+                except Exception:
+                    # Count display might not be available, continue
+                    pass
 
                 # Dynamically adjust update interval based on files scanned
                 ui_update_interval = base_ui_update_interval
@@ -362,11 +385,16 @@ class ReclaimedApp(App):
             return
 
         # Get loading indicator
-        loading = self.query_one("#scan-progress")
+        try:
+            loading = self.query_one("#scan-progress")
+        except Exception:
+            # Loading indicator might not be available
+            loading = None
 
         if event.worker.state == WorkerState.SUCCESS:
             # Hide loading indicator
-            loading.styles.display = "none"
+            if loading:
+                loading.styles.display = "none"
 
             # Get result data from worker
             file_count = 0
@@ -387,8 +415,12 @@ class ReclaimedApp(App):
             elapsed = time.monotonic() - self.start_time
 
             # Update final file count
-            count_display = self.query_one("#scan-count")
-            count_display.update(f"Files: {file_count:,}")
+            try:
+                count_display = self.query_one("#scan-count")
+                count_display.update(f"Files: {file_count:,}")
+            except Exception:
+                # Count display might not be available
+                pass
 
             # Show completion notification
             self.notify(f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.", timeout=5)
@@ -410,7 +442,8 @@ class ReclaimedApp(App):
 
         elif event.worker.state == WorkerState.ERROR:
             # Hide loading indicator
-            loading.styles.display = "none"
+            if loading:
+                loading.styles.display = "none"
             self.notify("Scan failed!", severity="error")
 
     # Track last table update to avoid redundant updates
@@ -419,11 +452,17 @@ class ReclaimedApp(App):
 
     def update_tables(self) -> None:
         """Update both data tables with current data, avoiding redundant updates."""
-        # Update files table if data has changed
-        self._update_table_if_changed("#files-table", self.largest_files)
+        # Check if tables exist before trying to update them
+        # This prevents race conditions during app startup
+        try:
+            # Update files table if data has changed
+            self._update_table_if_changed("#files-table", self.largest_files)
 
-        # Update dirs table if data has changed
-        self._update_table_if_changed("#dirs-table", self.largest_dirs)
+            # Update dirs table if data has changed
+            self._update_table_if_changed("#dirs-table", self.largest_dirs)
+        except Exception:
+            # Tables might not be mounted yet, skip update
+            pass
 
     def _update_table_if_changed(self, table_id: str, items: List[FileInfo]) -> None:
         """Update a table only if its data has changed significantly.
@@ -511,7 +550,13 @@ class ReclaimedApp(App):
             table_id: CSS selector for the table
             items: List of FileInfo objects to display
         """
-        table = self.query_one(table_id)
+        # Use query instead of query_one to handle missing tables gracefully
+        tables = self.query(table_id)
+        if not tables:
+            # Table doesn't exist yet, skip update
+            return
+        
+        table = tables.first()
         table.clear()
         table.can_focus = True
 
@@ -775,7 +820,11 @@ class ReclaimedApp(App):
             self.notify("Hiding only works for directories. Switch to directories view (D) first.", timeout=3)
             return
 
-        table = self.query_one("#dirs-table")
+        try:
+            table = self.query_one("#dirs-table")
+        except Exception:
+            self.notify("Directories table not available yet", timeout=3)
+            return
 
         # Check if a row is selected
         if table.cursor_coordinate is not None:
@@ -835,7 +884,11 @@ class ReclaimedApp(App):
     def action_delete_selected(self) -> None:
         """Delete the selected file or directory."""
         # Get the current table based on the focus
-        table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
+        try:
+            table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
+        except Exception:
+            self.notify("Table not available yet", timeout=3)
+            return
 
         # Check if a row is selected
         if table.cursor_coordinate is not None:
@@ -878,8 +931,12 @@ class ReclaimedApp(App):
                             items[:] = [item for item in items if item.path != path]
 
                             # Remove the row from the table using the path as the key
-                            table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
-                            table.remove_row(str(path))
+                            try:
+                                table = self.query_one("#files-table" if self.current_focus == "files" else "#dirs-table")
+                                table.remove_row(str(path))
+                            except Exception:
+                                # Table might not exist, just continue
+                                pass
 
                             # If we have remaining rows, ensure cursor is in a valid position
                             if len(table.rows) > 0:
@@ -961,14 +1018,17 @@ class ReclaimedApp(App):
     def focus_active_table(self) -> None:
         """Focus the currently active table based on current_focus."""
         table_id = "#files-table" if self.current_focus == "files" else "#dirs-table"
-        table = self.query_one(table_id)
-
-        # Only set focus if the table has rows
-        if len(table.rows) > 0:
-            self.set_focus(table)
-            # Set cursor to first row if no row is selected
-            if table.cursor_coordinate is None:
-                table.move_cursor(row=0, column=0)
+        try:
+            table = self.query_one(table_id)
+            # Only set focus if the table has rows
+            if len(table.rows) > 0:
+                self.set_focus(table)
+                # Set cursor to first row if no row is selected
+                if table.cursor_coordinate is None:
+                    table.move_cursor(row=0, column=0)
+        except Exception:
+            # Table might not be mounted yet, skip
+            pass
 
     def on_unmount(self) -> None:
         """Event handler called when app is unmounted."""
