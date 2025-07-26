@@ -242,13 +242,13 @@ def test_save_results(tmp_path):
 
     # Create test data
     files = [
-        FileInfo(Path("/test/file1.txt"), 1000, False),
-        FileInfo(Path("/test/file2.txt"), 2000, True)
+        FileInfo(Path("/test/file1.txt"), 1000, 1234567890.0, False),
+        FileInfo(Path("/test/file2.txt"), 2000, 1234567891.0, True)
     ]
 
     dirs = [
-        FileInfo(Path("/test/dir1"), 3000, False),
-        FileInfo(Path("/test/dir2"), 4000, True)
+        FileInfo(Path("/test/dir1"), 3000, 1234567892.0, False),
+        FileInfo(Path("/test/dir2"), 4000, 1234567893.0, True)
     ]
 
     # Set up scanner internal state
