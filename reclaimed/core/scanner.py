@@ -1,27 +1,73 @@
-"""Core disk scanning functionality."""
+"""Core disk scanning functionality.
+
+The scanner keeps every directory in dense, integer-indexed parallel arrays
+rather than in ``Path``-keyed dictionaries. Because a directory is always
+discovered after its parent, ``_parent[i] < i`` holds for every ``i > 0``, which
+turns subtree accounting into a single reverse pass with no recursion and no
+per-file ancestor walking.
+
+Traversal itself lives in :mod:`reclaimed.core.walk` so it can run in worker
+threads. The algorithm is expressed once, in :meth:`DiskScanner._engine`, as a
+generator that asks for work and is fed results; the sync and async entry points
+are thin drivers over it and share no scanning logic.
+"""
 
 import asyncio
+import heapq
 import json
-import logging
 import os
+import threading
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncIterator, Dict, Iterator, List, Optional, Tuple
+from typing import (
+    AsyncIterator,
+    Dict,
+    Generator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..utils.formatters import format_size
-from .cache import DirectorySizeCache
-from .errors import (
-    AccessError,
-    InvalidPathError,
-    PermissionError,
-    ScanInterruptedError,
-)
+from .errors import DiskScannerError, InvalidPathError, ScanInterruptedError
 from .types import FileInfo, ScanOptions, ScanProgress, ScanResult
+from .walk import MOBILE_DOCUMENTS, DirListing, WalkContext, WalkJob, list_chunk
 
-logger = logging.getLogger(__name__)
+#: Seconds between progress emissions. The Textual UI throttles further.
+EMIT_INTERVAL = 1.0
+
+#: Directories dispatched per batch. Starts small so the first results paint
+#: quickly, then grows to amortise dispatch overhead across a large tree.
+FIRST_BATCH = 64
+MAX_BATCH = 1024
+
+#: Upper bound on worker threads. Measured on APFS: 4 threads scan ~1.1M files
+#: in 12.2s, 8 in 12.6s, 16 in 16.2s. More workers actively hurt.
+MAX_WORKERS = 8
+DEFAULT_WORKERS = 4
+
+
+class _Work(NamedTuple):
+    """Engine request: list these directories and send the listings back."""
+
+    jobs: List[WalkJob]
+
+
+class _Emit(NamedTuple):
+    """Engine request: surface this progress snapshot, if anyone is watching."""
+
+    progress: ScanProgress
+
+
+_Request = Union[_Work, _Emit]
 
 
 class DiskScanner:
@@ -36,137 +82,19 @@ class DiskScanner:
         """
         self.options = options or ScanOptions()
         self.console = console or Console()
-        self._cache = DirectorySizeCache()
         self._access_issues: Dict[Path, str] = {}
-        self._dir_sizes: Dict[Path, Tuple[int, bool]] = {}
         self._total_size = 0
         self._file_count = 0
+        #: Results from the most recent interrupted scan, if any.
+        self.last_partial_result: Optional[ScanResult] = None
+        self._reset_state()
 
-    async def scan_async(self, root_path: Path) -> AsyncIterator[ScanProgress]:
-        """Scan a directory asynchronously, yielding progress updates.
-
-        Args:
-            root_path: Directory to scan
-
-        Yields:
-            ScanProgress updates during scanning
-
-        Raises:
-            InvalidPathError: If root_path is not a directory
-            ScanInterruptedError: If scanning is interrupted
-        """
-        if not root_path.is_dir():
-            raise InvalidPathError(root_path, "Not a directory")
-
-        try:
-            # Reset scan state
-            self._access_issues.clear()
-            self._dir_sizes.clear()
-            self._total_size = 0
-            self._file_count = 0
-
-            # Track largest files and dirs during scan
-            largest_files: List[FileInfo] = []
-            largest_dirs: List[FileInfo] = []
-
-            # Process files in chunks for smoother progress updates
-            chunk_size = 250  # Increased chunk size for better performance
-            paths_chunk: List[Path] = []
-
-            # Pre-populate cache with any existing entries for better performance
-            # Track when we last calculated directory sizes
-            last_dir_calc_time = 0
-            # Start with frequent calculations, then reduce frequency based on file count
-            dir_calc_interval = 1.0  # Default: Calculate directory sizes once per second
-
-            # Unpack the new last_modified value
-            async for path, is_file, size, last_modified in self._walk_directory_async(root_path):
-                if is_file:
-                    try:
-                        # Create file info directly with the size we already have
-                        is_icloud = (
-                            self.options.icloud_base
-                            and self.options.icloud_base in path.parents
-                            or "Mobile Documents" in str(path)
-                        )
-                        # Include last_modified in FileInfo creation
-                        file_info = FileInfo(path, size, last_modified, is_icloud)
-
-                        # Update directory sizes incrementally
-                        self._update_dir_sizes(path, size, is_icloud)
-
-                        # Insert file in sorted position if it's large enough
-                        if (
-                            not largest_files
-                            or len(largest_files) < self.options.max_files
-                            or size > largest_files[-1].size
-                        ):
-                            self._insert_sorted(largest_files, file_info, self.options.max_files)
-                            # No need to manually trim the list as _insert_sorted now handles this
-
-                        self._total_size += size
-                        self._file_count += 1
-
-                        # Add to chunk for batch processing
-                        paths_chunk.append(path)
-                        if len(paths_chunk) >= chunk_size:
-                            paths_chunk.clear()
-
-                            # Check if it's time to calculate directory sizes
-                            current_time = time.time()
-
-                            # Dynamically adjust directory calculation interval based on file count
-                            if self._file_count > 50000:
-                                dir_calc_interval = 5.0  # Very infrequent for huge directories
-                            elif self._file_count > 10000:
-                                dir_calc_interval = 3.0  # Less frequent for large directories
-                            elif self._file_count > 5000:
-                                dir_calc_interval = 2.0  # Moderate for medium directories
-                            else:
-                                dir_calc_interval = 1.0  # Frequent for small directories
-
-                            if current_time - last_dir_calc_time >= dir_calc_interval:
-                                # Get largest directories
-                                largest_dirs = self._get_largest_dirs(root_path)
-                                last_dir_calc_time = current_time
-
-                                # Calculate a rough progress estimate
-                                # Not accurate for total completion but provides visual feedback
-                                progress_estimate = min(
-                                    0.95, self._file_count / (self._file_count + 1000)
-                                )
-
-                                # Yield progress
-                                yield ScanProgress(
-                                    progress=progress_estimate,
-                                    files=largest_files[: self.options.max_files],
-                                    dirs=largest_dirs[: self.options.max_dirs],
-                                    scanned=self._file_count,
-                                    total_size=self._total_size,
-                                )
-
-                                # Allow other tasks to run
-                                await asyncio.sleep(0)
-                    except (PermissionError, OSError) as e:
-                        self._handle_access_error(path, e)
-
-            # Final directory size calculation
-            largest_dirs = self._get_largest_dirs(root_path)
-
-            # Final progress update
-            yield ScanProgress(
-                progress=1.0,
-                files=largest_files[: self.options.max_files],
-                dirs=largest_dirs[: self.options.max_dirs],
-                scanned=self._file_count,
-                total_size=self._total_size,
-            )
-
-        except KeyboardInterrupt:
-            raise ScanInterruptedError() from None
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def scan(self, root_path: Path) -> ScanResult:
-        """Synchronous version of scan_async.
+        """Scan a directory synchronously.
 
         Args:
             root_path: Directory to scan
@@ -176,329 +104,397 @@ class DiskScanner:
 
         Raises:
             InvalidPathError: If root_path is not a directory
+            ScanInterruptedError: If scanning is interrupted. The results
+                gathered so far are attached as ``.partial``.
+        """
+        if not root_path.is_dir():
+            raise InvalidPathError(root_path, "Not a directory")
+
+        self._reset_state(root_path)
+        engine = self._engine()
+        executor = self._make_pool(always=False)
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}", markup=False),
+            console=self.console,
+            transient=True,
+            disable=not self.console.is_terminal,
+        )
+        try:
+            with progress:
+                task = progress.add_task("Starting scan…", total=None)
+                current_directory = str(root_path)
+                try:
+                    request = next(engine)
+                    while True:
+                        if isinstance(request, _Work):
+                            if request.jobs:
+                                current_directory = request.jobs[-1].path
+                            request = engine.send(self._run_batch(executor, request.jobs))
+                        else:
+                            progress.update(
+                                task,
+                                description=(
+                                    f"{request.progress.scanned:,} files • "
+                                    f"{format_size(request.progress.total_size)} • "
+                                    f"{current_directory}"
+                                ),
+                            )
+                            request = engine.send(None)
+                except StopIteration:
+                    pass
+            return self._build_result()
+        except KeyboardInterrupt:
+            raise self._interrupted() from None
+        finally:
+            engine.close()
+            if executor is not None:
+                executor.shutdown(wait=False)
+
+    async def scan_async(self, root_path: Path) -> AsyncIterator[ScanProgress]:
+        """Scan a directory asynchronously, yielding progress updates.
+
+        Args:
+            root_path: Directory to scan
+
+        Yields:
+            ScanProgress updates during scanning, ending with a final snapshot
+            whose directory sizes are exact at every depth.
+
+        Raises:
+            InvalidPathError: If root_path is not a directory
             ScanInterruptedError: If scanning is interrupted
         """
         if not root_path.is_dir():
             raise InvalidPathError(root_path, "Not a directory")
 
+        self._reset_state(root_path)
+        loop = asyncio.get_running_loop()
+        engine = self._engine()
+        # Always use a pool here, even for a single worker, so that blocking
+        # scandir calls never run on the event loop driving the UI.
+        executor = self._make_pool(always=True)
+        assert executor is not None
         try:
-            # Reset scan state
-            self._access_issues.clear()
-            self._dir_sizes.clear()
-            self._total_size = 0
-            self._file_count = 0
-
-            # Collect all files first
-            files: List[FileInfo] = []
-
-            # Unpack the new last_modified value
-            for path, is_file, size, last_modified in self._walk_directory(root_path):
-                if is_file:
-                    try:
-                        # Create file info directly with the size we already have
-                        is_icloud = (
-                            self.options.icloud_base
-                            and self.options.icloud_base in path.parents
-                            or "Mobile Documents" in str(path)
-                        )
-                        # Include last_modified in FileInfo creation
-                        file_info = FileInfo(path, size, last_modified, is_icloud)
-
-                        # Update directory sizes incrementally
-                        self._update_dir_sizes(path, size, is_icloud)
-
-                        # Add to files list
-                        files.append(file_info)
-                        self._total_size += size
-                        self._file_count += 1
-                    except (PermissionError, OSError) as e:
-                        self._handle_access_error(path, e)
-
-            # Sort files by size
-            files.sort(key=lambda x: x.size, reverse=True)
-
-            # Get largest directories
-            dirs = self._get_largest_dirs(root_path)
-
-            return ScanResult(
-                files=files[: self.options.max_files],
-                directories=dirs[: self.options.max_dirs],
-                total_size=self._total_size,
-                files_scanned=self._file_count,
-                access_issues=dict(self._access_issues),
-            )
-
-        except KeyboardInterrupt:
-            raise ScanInterruptedError() from None
-
-    def _should_skip_directory(self, dir_path: Path) -> bool:
-        """Check if a directory should be skipped based on skip_dirs patterns.
-
-        Args:
-            dir_path: Path to the directory to check
-
-        Returns:
-            True if the directory should be skipped, False otherwise
-        """
-        if not self.options.skip_dirs:
-            return False
-
-        dir_name = dir_path.name
-
-        for skip_pattern in self.options.skip_dirs:
-            # Exact name match (original behavior)
-            if dir_name == skip_pattern:
-                return True
-
-            # Path component matching - check if pattern matches any path component
-            # This avoids false positives from substring matching on full paths
-            for part in dir_path.parts:
-                if part == skip_pattern:
-                    return True
-
-        return False
-
-    async def _walk_directory_async(self, path: Path) -> AsyncIterator[Tuple[Path, bool, int, float]]:
-        """Asynchronously walk directory tree with adaptive traversal.
-
-        Args:
-            path: Directory to walk
-
-        Yields:
-            Tuple of (path, is_file, size, last_modified) for each path encountered
-        """
-        try:
-            # Process directories in batches for better performance
-            dirs_to_process = [path]
-            processed_count = 0
-            is_small_directory = True  # Assume small directory initially
-
-            while dirs_to_process:
-                current_dir = dirs_to_process.pop(0)
-
-                try:
-                    # Use os.scandir directly for better performance
-                    entries = list(os.scandir(current_dir))
-
-                    # First collect subdirectories to process
-                    for entry in entries:
-                        try:
-                            if entry.is_symlink():
-                                continue
-
-                            if entry.is_dir():
-                                if not self._should_skip_directory(Path(entry.path)):
-                                    dirs_to_process.append(Path(entry.path))
-                            else:
-                                # Get file stats directly from DirEntry for better performance
-                                try:
-                                    stat_result = entry.stat() # Get stat result once
-                                    size = stat_result.st_size
-                                    last_modified = stat_result.st_mtime # Get timestamp
-                                    yield Path(entry.path), True, size, last_modified # Yield timestamp
-                                    processed_count += 1
-
-                                    # After processing 500 files, we know it's not a small directory
-                                    if processed_count == 500 and is_small_directory:
-                                        is_small_directory = False
-
-                                    # For small directories, don't yield to avoid overhead
-                                    # For larger directories, yield occasionally to keep
-                                    # UI responsive
-                                    if not is_small_directory and processed_count % 500 == 0:
-                                        await asyncio.sleep(0)
-                                except (OSError, AttributeError) as e:
-                                    self._handle_access_error(Path(entry.path), e)
-                        except (OSError, AttributeError) as e:
-                            self._handle_access_error(Path(entry.path), e)
-
-                except (AccessError, OSError) as e:
-                    self._handle_access_error(current_dir, e)
-
-                # Yield the directory itself after processing its contents
-                try:
-                    # Get stat for the directory to yield its mtime
-                    dir_stat = current_dir.stat()
-                    yield current_dir, False, 0, dir_stat.st_mtime
-                except (OSError, AttributeError) as e:
-                    self._handle_access_error(current_dir, e) # Handle potential error getting stat
-
-                # For small directories, don't yield between directories to complete faster
-                # For larger directories, yield occasionally to keep UI responsive
-                if not is_small_directory:
-                    await asyncio.sleep(0)
-
-        except (AccessError, OSError) as e:
-            self._handle_access_error(path, e)
-
-    def _walk_directory(self, path: Path) -> Iterator[Tuple[Path, bool, int, float]]:
-        """Synchronous version of _walk_directory_async.
-
-        Yields:
-            Tuple of (path, is_file, size, last_modified) for each path encountered
-        """
-        try:
-            # Use os.scandir directly for better performance
-            for entry in os.scandir(path):
-                try:
-                    entry_path = Path(entry.path)
-
-                    if entry.is_symlink():
-                        continue
-
-                    if entry.is_dir():
-                        if not self._should_skip_directory(entry_path):
-                            # Recursively process subdirectory
-                            yield from self._walk_directory(entry_path)
-
-                        # Yield directory itself with size 0 and its mtime
-                        try:
-                            dir_stat = entry_path.stat()
-                            yield entry_path, False, 0, dir_stat.st_mtime
-                        except (OSError, AttributeError) as e:
-                            self._handle_access_error(entry_path, e)
+            try:
+                request = next(engine)
+                while True:
+                    if isinstance(request, _Work):
+                        listings = await self._run_batch_async(loop, executor, request.jobs)
+                        request = engine.send(listings)
                     else:
-                        # Get file stats directly from DirEntry for better performance
-                        try:
-                            stat_result = entry.stat() # Get stat result once
-                            size = stat_result.st_size
-                            last_modified = stat_result.st_mtime # Get timestamp
-                            yield entry_path, True, size, last_modified # Yield timestamp
-                        except (OSError, AttributeError) as e:
-                            self._handle_access_error(entry_path, e)
-                except (OSError, AttributeError) as e:
-                    self._handle_access_error(Path(entry.path), e)
-        except (AccessError, OSError) as e:
-            self._handle_access_error(path, e)
+                        yield request.progress
+                        request = engine.send(None)
+            except StopIteration:
+                pass
+            except KeyboardInterrupt:
+                raise self._interrupted() from None
+        finally:
+            # Never yield from here: an async generator that yields while
+            # handling GeneratorExit raises RuntimeError.
+            engine.close()
+            executor.shutdown(wait=False)
 
-    def _update_dir_sizes(self, file_path: Path, file_size: int, is_icloud: bool) -> None:
-        """Update directory sizes incrementally as files are processed.
+        result = self._build_result()
+        yield ScanProgress(
+            progress=1.0,
+            files=result.files,
+            dirs=result.directories,
+            scanned=self._file_count,
+            total_size=self._total_size,
+        )
 
-        Args:
-            file_path: Path to the file
-            file_size: Size of the file in bytes
-            is_icloud: Whether the file is in iCloud
+    # ------------------------------------------------------------------
+    # The algorithm
+    # ------------------------------------------------------------------
+
+    def _engine(self) -> Generator[_Request, Optional[List[DirListing]], None]:
+        """Drive the traversal, requesting work and folding in the results.
+
+        Yields ``_Work`` to have directories listed (the driver sends back the
+        listings) and ``_Emit`` to surface progress. Contains the whole
+        algorithm; the drivers contribute only their concurrency model.
         """
-        # Initialize update counter if it doesn't exist
-        if not hasattr(self, "_update_counter"):
-            self._update_counter = 0
-        self._update_counter += 1
+        frontier = self._frontier
+        batch_size = FIRST_BATCH
+        last_emit = time.monotonic()
 
-        # Update size for all parent directories in memory
-        for parent in file_path.parents:
-            curr_size, curr_cloud = self._dir_sizes.get(parent, (0, False))
-            new_size = curr_size + file_size
-            new_cloud = curr_cloud or is_icloud
-            self._dir_sizes[parent] = (new_size, new_cloud)
+        while frontier:
+            jobs = [
+                WalkJob(dir_id, self._paths[dir_id])
+                for dir_id in (frontier.popleft() for _ in range(min(batch_size, len(frontier))))
+            ]
+            listings = yield _Work(jobs)
+            for listing in listings or ():
+                self._absorb(listing, frontier)
 
-        # Only update cache periodically to reduce overhead
-        # For large directories, update cache less frequently
-        cache_update_frequency = 100
-        if self._file_count > 10000:
-            cache_update_frequency = 500
-        elif self._file_count > 5000:
-            cache_update_frequency = 250
+            batch_size = min(MAX_BATCH, batch_size * 2)
 
-        if self._update_counter % cache_update_frequency == 0:
-            # Batch update the cache for all parent directories
-            for parent in file_path.parents:
-                size, is_cloud = self._dir_sizes.get(parent, (0, False))
-                self._cache.set(parent, size, is_cloud)
+            now = time.monotonic()
+            if not frontier or now - last_emit >= EMIT_INTERVAL:
+                last_emit = now
+                yield _Emit(self._live_progress())
 
-    def _get_largest_dirs(self, root: Path) -> List[FileInfo]:
-        """Get the largest directories from the calculated sizes.
+    def _absorb(self, listing: DirListing, frontier: "deque") -> None:
+        """Fold one directory listing into scanner state."""
+        dir_id = listing.dir_id
+        self._own[dir_id] = listing.own_bytes
+        self._file_count += listing.file_count
+        self._total_size += listing.own_bytes
 
-        Args:
-            root: Root directory of scan
+        if listing.error is not None:
+            self._access_issues[Path(self._paths[dir_id])] = listing.error
+        for path, message in listing.entry_errors:
+            self._access_issues[Path(path)] = message
 
-        Returns:
-            List of directories sorted by size
+        is_icloud = self._icloud[dir_id]
+        for size, path, mtime in listing.candidates:
+            self._offer_file(size, path, mtime, is_icloud)
+
+        for name, path in listing.subdirs:
+            child_icloud = is_icloud or (
+                self._icloud_base is not None
+                and (name == MOBILE_DOCUMENTS or path == self._icloud_base)
+            )
+            frontier.append(self._new_dir(path, dir_id, child_icloud))
+
+    def _new_dir(self, path: str, parent: int, is_icloud: bool) -> int:
+        """Register a directory and return its dense id."""
+        dir_id = len(self._paths)
+        self._paths.append(path)
+        self._parent.append(parent)
+        self._own.append(0)
+        self._icloud.append(is_icloud)
+        return dir_id
+
+    def _offer_file(self, size: int, path: str, mtime: float, is_icloud: bool) -> None:
+        """Offer a file to the bounded top-N heap.
+
+        The tuple carries ``path`` second so that equal sizes are broken by a
+        string comparison. Holding a ``Path`` there instead would raise
+        TypeError when two paths of different flavours tie.
         """
-        # Convert directory sizes to FileInfo objects, fetching mtime
-        dirs = []
-        for p, (s, c) in self._dir_sizes.items():
-            # Apply the same filtering as before
-            if p.is_dir() and (p == root or root in p.parents or p in root.parents):
-                try:
-                    # Get the last modified time for the directory
-                    last_modified = os.stat(p).st_mtime
-                except OSError:
-                    # Default to 0.0 if stat fails
-                    last_modified = 0.0
-                dirs.append(FileInfo(p, s, last_modified, c))
-
-        # Sort by size (largest first)
-        dirs.sort(key=lambda x: x.size, reverse=True)
-        return dirs[: self.options.max_dirs]
-
-    def _handle_access_error(self, path: Path, error: Exception) -> None:
-        """Handle and record access errors.
-
-        Args:
-            path: Path that caused error
-            error: Exception that occurred
-        """
-        err_msg = f"{error.__class__.__name__}: {str(error)}"
-        self._access_issues[path] = err_msg
-        logger.debug("Access error for %s: %s", path, err_msg)
-
-    @staticmethod
-    def _insert_sorted(items: List[FileInfo], item: FileInfo, max_items: int = None) -> None:
-        """Insert item into sorted list maintaining size order.
-
-        Args:
-            items: Sorted list to insert into
-            item: Item to insert
-            max_items: Maximum number of items to keep (defaults to None for unlimited)
-        """
-        # If max_items is specified and the list is already at capacity,
-        # only insert if the item is larger than the smallest item
-        if max_items is not None and len(items) >= max_items and item.size <= items[-1].size:
-            return  # Skip insertion for items that won't make it into the final list
-
-        # Fast path for empty list or when item is smaller than all existing items
-        if not items or item.size <= items[-1].size:
-            items.append(item)
-            # Trim if needed
-            if max_items is not None and len(items) > max_items:
-                items.pop()
+        limit = self.options.max_files
+        if limit <= 0:
             return
+        heap = self._file_heap
+        if len(heap) < limit:
+            heapq.heappush(heap, (size, path, mtime, is_icloud))
+            if len(heap) == limit:
+                self._ctx.floor = heap[0][0]
+        elif size > heap[0][0]:
+            heapq.heapreplace(heap, (size, path, mtime, is_icloud))
+            self._ctx.floor = heap[0][0]
+        elif size == heap[0][0]:
+            # For equal sizes keep the lexicographically smallest paths. The
+            # regular heap root is the smallest path, so locate the worst tie
+            # explicitly; this touches at most max_files entries.
+            tied = [index for index, item in enumerate(heap) if item[0] == size]
+            worst = max(tied, key=lambda index: heap[index][1])
+            if path < heap[worst][1]:
+                heap[worst] = (size, path, mtime, is_icloud)
+                heapq.heapify(heap)
 
-        # Fast path for when item is larger than all existing items
-        if item.size > items[0].size:
-            items.insert(0, item)
-            # Trim if needed
-            if max_items is not None and len(items) > max_items:
-                items.pop()
-            return
+    def _rollup(self) -> Tuple[List[int], List[bool]]:
+        """Compute exact subtree totals for every directory.
 
-        # Binary search for insertion point
-        low, high = 0, len(items) - 1
-        while low <= high:
-            mid = (low + high) // 2
-            if items[mid].size < item.size:
-                high = mid - 1
-            else:
-                low = mid + 1
+        One reverse pass over the arrays. Valid because a directory is always
+        discovered after its parent, so every child's index exceeds its own.
+        """
+        totals = list(self._own)
+        icloud = list(self._icloud)
+        parent = self._parent
+        for index in range(len(totals) - 1, 0, -1):
+            ancestor = parent[index]
+            totals[ancestor] += totals[index]
+            if icloud[index]:
+                icloud[ancestor] = True
+        return totals, icloud
 
-        items.insert(low, item)
+    # ------------------------------------------------------------------
+    # Result assembly
+    # ------------------------------------------------------------------
 
-        # Trim if needed
-        if max_items is not None and len(items) > max_items:
-            items.pop()
+    def _build_result(self) -> ScanResult:
+        totals, icloud = self._rollup()
+        return ScanResult(
+            files=self._top_files(),
+            directories=self._top_dirs(totals, icloud),
+            total_size=self._total_size,
+            files_scanned=self._file_count,
+            access_issues=dict(self._access_issues),
+        )
 
-    def _print_access_issues_summary(self) -> None:
-        """Print a rich-formatted summary of access issues."""
-        from ..ui.formatters import TableFormatter
+    def _top_files(self) -> List[FileInfo]:
+        """Largest files, biggest first, ties broken by path for determinism."""
+        ordered = sorted(self._file_heap, key=lambda item: (-item[0], item[1]))
+        return [
+            FileInfo(Path(path), size, mtime, is_icloud)
+            for size, path, mtime, is_icloud in ordered
+        ]
 
-        if not self._access_issues:
-            return
+    def _top_dirs(self, totals: List[int], icloud: List[bool]) -> List[FileInfo]:
+        """Largest directories, biggest first.
 
-        formatter = TableFormatter(self.console)
-        issues_table = formatter.format_access_issues(self._access_issues)
-        if issues_table:
-            self.console.print(issues_table)
-            self.console.print()
+        ``nlargest`` is O(dirs) with a small constant and runs once, replacing a
+        full sort of every known directory repeated throughout the scan.
+        """
+        if not totals:
+            return []
+        ids = heapq.nlargest(
+            max(0, self.options.max_dirs), range(len(totals)), key=totals.__getitem__
+        )
+        return [
+            FileInfo(Path(self._paths[i]), totals[i], self._dir_mtime(i), icloud[i]) for i in ids
+        ]
+
+    def _live_progress(self) -> ScanProgress:
+        """Snapshot for mid-scan display.
+
+        A reverse rollup over the discovered directories uses no syscalls. A
+        directory whose subtree has not yet been walked simply under-reports
+        and grows as the scan proceeds.
+        """
+        totals, icloud = self._rollup()
+        ids = heapq.nlargest(
+            max(0, self.options.max_dirs), range(len(totals)), key=totals.__getitem__
+        )
+        dirs = [
+            FileInfo(Path(self._paths[i]), totals[i], 0.0, icloud[i])
+            for i in ids
+        ]
+        return ScanProgress(
+            progress=min(0.95, self._file_count / (self._file_count + 1000)),
+            files=self._top_files(),
+            dirs=dirs,
+            scanned=self._file_count,
+            total_size=self._total_size,
+        )
+
+    def _dir_mtime(self, dir_id: int) -> float:
+        """Modification time for a directory, stat'd lazily and cached.
+
+        Only directories that actually reach a result are stat'd, which avoids
+        one syscall per directory across the whole tree.
+        """
+        cached = self._mtime_cache.get(dir_id)
+        if cached is None:
+            try:
+                cached = os.stat(self._paths[dir_id]).st_mtime
+            except OSError:
+                cached = 0.0
+            self._mtime_cache[dir_id] = cached
+        return cached
+
+    def _interrupted(self) -> ScanInterruptedError:
+        """Cancel outstanding work and package up whatever was collected."""
+        self._cancel.set()
+        partial = self._build_result()
+        self.last_partial_result = partial
+        return ScanInterruptedError(partial=partial)
+
+    # ------------------------------------------------------------------
+    # Concurrency
+    # ------------------------------------------------------------------
+
+    def _worker_count(self) -> int:
+        configured = self.options.max_workers
+        if configured is None:
+            return min(DEFAULT_WORKERS, os.cpu_count() or 1)
+        return max(1, min(int(configured), MAX_WORKERS))
+
+    def _make_pool(self, always: bool) -> Optional[ThreadPoolExecutor]:
+        """Create the worker pool, or None to run listings inline."""
+        if self._workers == 1 and not always:
+            return None
+        return ThreadPoolExecutor(
+            max_workers=self._workers, thread_name_prefix="reclaimed-walk"
+        )
+
+    def _split(self, jobs: List[WalkJob]) -> List[List[WalkJob]]:
+        """Split a batch into several dynamically scheduled chunks.
+
+        One future per directory would drown the speedup in executor overhead,
+        while one large slice per worker leaves fast workers idle behind the
+        slowest slice. Four chunks per worker balances both costs.
+        """
+        step = max(1, -(-len(jobs) // (self._workers * 4)))
+        return [jobs[i : i + step] for i in range(0, len(jobs), step)]
+
+    def _run_batch(
+        self, executor: Optional[ThreadPoolExecutor], jobs: List[WalkJob]
+    ) -> List[DirListing]:
+        if not jobs:
+            return []
+        if executor is None:
+            return list_chunk(jobs, self._ctx)
+        futures = [executor.submit(list_chunk, chunk, self._ctx) for chunk in self._split(jobs)]
+        listings: List[DirListing] = []
+        for future in futures:
+            listings.extend(future.result())
+        return listings
+
+    async def _run_batch_async(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        executor: ThreadPoolExecutor,
+        jobs: List[WalkJob],
+    ) -> List[DirListing]:
+        if not jobs:
+            return []
+        futures = [
+            loop.run_in_executor(executor, list_chunk, chunk, self._ctx)
+            for chunk in self._split(jobs)
+        ]
+        listings: List[DirListing] = []
+        for chunk in await asyncio.gather(*futures):
+            listings.extend(chunk)
+        return listings
+
+    # ------------------------------------------------------------------
+    # State
+    # ------------------------------------------------------------------
+
+    def _reset_state(self, root_path: Optional[Path] = None) -> None:
+        """Clear per-scan state and seed the root directory."""
+        self._paths: List[str] = []
+        self._parent: List[int] = []
+        self._own: List[int] = []
+        self._icloud: List[bool] = []
+        self._file_heap: List[Tuple[int, str, float, bool]] = []
+        self._mtime_cache: Dict[int, float] = {}
+        self._access_issues = {}
+        self._total_size = 0
+        self._file_count = 0
+        self._frontier: "deque" = deque()
+        self._workers = self._worker_count()
+        self._cancel = threading.Event()
+        self._icloud_base = (
+            os.path.realpath(os.fspath(self.options.icloud_base))
+            if self.options.icloud_base is not None
+            else None
+        )
+        self._ctx = WalkContext(
+            skip=frozenset(self.options.skip_dirs or ()),
+            max_files=self.options.max_files,
+            cancel=self._cancel,
+        )
+
+        if root_path is not None:
+            root = str(root_path)
+            comparable_root = os.path.realpath(root)
+            # Seed from the full root string so that a scan rooted inside
+            # iCloud is recognised even though its marker lies above the root.
+            root_icloud = self._icloud_base is not None and (
+                comparable_root == self._icloud_base
+                or comparable_root.startswith(self._icloud_base + os.sep)
+                or MOBILE_DOCUMENTS in comparable_root
+            )
+            self._frontier.append(self._new_dir(root, -1, root_icloud))
+
+    # ------------------------------------------------------------------
+    # Output
+    # ------------------------------------------------------------------
 
     def save_results(
         self, output_path: Path, files: List[FileInfo], dirs: List[FileInfo], scanned_path: Path
@@ -511,7 +507,7 @@ class DiskScanner:
             dirs: List of largest directories.
             scanned_path: The root directory that was scanned.
         """
-        from ..ui.styles import GREEN, RED
+        from ..ui.styles import GREEN
 
         results = {
             "scan_info": {
@@ -548,5 +544,5 @@ class DiskScanner:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
             self.console.print(f"[{GREEN}]Results saved to {output_path.absolute()}[/]")
-        except Exception as e:
-            self.console.print(f"[{RED}]Failed to save results: {e}[/]")
+        except Exception as error:
+            raise DiskScannerError(f"Failed to save results: {error}") from error

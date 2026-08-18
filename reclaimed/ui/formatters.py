@@ -1,125 +1,137 @@
 """UI formatting utilities for disk scanner."""
 
+import os
 from pathlib import Path
-from typing import List, Optional
-from datetime import datetime # Import datetime
+from typing import Dict, List, Optional, Union
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
 from ..core.types import FileInfo
-from ..utils.formatters import format_size
+from ..utils.formatters import format_bar, format_size
 from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, YELLOW
 
 
+def format_display_path(path: Path, root_path: Path, max_width: int) -> str:
+    """Format a root-relative path, preserving its basename when truncated."""
+    try:
+        display = str(path.relative_to(root_path))
+    except ValueError:
+        display = str(path)
+
+    if len(display) <= max_width:
+        return display
+    if max_width <= 1:
+        return "…"[:max_width]
+
+    basename = path.name or display
+    if len(basename) + 2 >= max_width:
+        return "…" + basename[-(max_width - 1) :]
+
+    prefix_width = max_width - len(basename) - 2
+    return f"{display[:prefix_width]}…{os.sep}{basename}"
+
+
+def format_percentage(fraction: float) -> str:
+    """Format a table percentage compactly."""
+    clamped = min(1.0, max(0.0, fraction))
+    if clamped >= 0.9995:
+        return "100%"
+    return f"{clamped * 100:.1f}%"
+
+
 class TableFormatter:
-    """Format scan results into rich tables."""
+    """Format scan results into Rich tables."""
+
+    BAR_WIDTH = 20
 
     def __init__(self, console: Optional[Console] = None):
-        """Initialize the formatter.
-
-        Args:
-            console: Rich console to use for output
-        """
         self.console = console or Console()
 
-    def format_files_table(self, files: List[FileInfo], root_path: Path) -> Table:
-        """Format list of files into a rich table.
-
-        Args:
-            files: List of files to display
-            root_path: Root path for relative path display
-
-        Returns:
-            Rich table of formatted file information
-        """
+    def _format_usage_table(
+        self,
+        title: str,
+        border_style: str,
+        items: List[FileInfo],
+        root_path: Path,
+        total_size: Optional[int],
+    ) -> Table:
+        show_storage = any(item.is_icloud for item in items)
         table = Table(
-            title=f"[{BASE1}]Largest Files[/]",
-            border_style=CYAN,
+            title=f"[{BASE1}]{title}[/]",
+            border_style=border_style,
             header_style=f"bold {BASE1}",
-            show_lines=True,
+            show_lines=False,
             padding=(0, 1),
             expand=True,
         )
-
-        table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
-        table.add_column("Last Modified", style=GREEN, no_wrap=True) # Added column
-        table.add_column("Storage", style=YELLOW, no_wrap=True)
-        table.add_column("Path", style=BASE0)
-
-        for file_info in files:
-            try:
-                rel_path = file_info.path.relative_to(root_path)
-            except ValueError:
-                rel_path = file_info.path
-
-            storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style=BLUE if file_info.is_icloud else GREEN)
-            # Format timestamp
-            last_modified_str = datetime.fromtimestamp(file_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
-
-            table.add_row(
-                format_size(file_info.size),
-                last_modified_str, # Added formatted timestamp
-                storage_cell,
-                str(rel_path)
+        table.add_column(
+            "Size", justify="right", style=CYAN, no_wrap=True, width=10, max_width=10
+        )
+        table.add_column(
+            "Bar",
+            style=CYAN,
+            no_wrap=True,
+            width=self.BAR_WIDTH,
+            max_width=self.BAR_WIDTH,
+        )
+        table.add_column(
+            "%", justify="right", style=GREEN, no_wrap=True, width=6, max_width=6
+        )
+        if show_storage:
+            table.add_column(
+                "Storage", style=YELLOW, no_wrap=True, width=8, max_width=8
             )
+        table.add_column("Path", style=BASE0, no_wrap=True, overflow="ellipsis")
+
+        denominator = total_size if total_size is not None else max(
+            (item.size for item in items), default=0
+        )
+        # Leave two cells of safety for Rich's borders and column separators so
+        # it never adds a second tail ellipsis after our middle truncation.
+        reserved_width = 60 if show_storage else 50
+        path_width = max(12, self.console.width - reserved_width)
+
+        for item in items:
+            fraction = item.size / denominator if denominator else 0.0
+            row: List[Union[str, Text]] = [
+                format_size(item.size),
+                format_bar(fraction, self.BAR_WIDTH),
+                format_percentage(fraction),
+            ]
+            if show_storage:
+                storage = "☁ iCloud" if item.is_icloud else "Local"
+                row.append(Text(storage, style=BLUE if item.is_icloud else GREEN))
+            row.append(format_display_path(item.path, root_path, path_width))
+            table.add_row(*row)
 
         return table
 
-    def format_dirs_table(self, dirs: List[FileInfo], root_path: Path) -> Table:
-        """Format list of directories into a rich table.
-
-        Args:
-            dirs: List of directories to display
-            root_path: Root path for relative path display
-
-        Returns:
-            Rich table of formatted directory information
-        """
-        table = Table(
-            title=f"[{BASE1}]Largest Directories[/]",
-            border_style=BLUE,
-            header_style=f"bold {BASE1}",
-            show_lines=True,
-            padding=(0, 1),
-            expand=True,
+    def format_files_table(
+        self,
+        files: List[FileInfo],
+        root_path: Path,
+        total_size: Optional[int] = None,
+    ) -> Table:
+        """Format the largest files as a proportional usage table."""
+        return self._format_usage_table(
+            "Largest Files", CYAN, files, root_path, total_size
         )
 
-        table.add_column("Size", justify="right", style=CYAN, no_wrap=True)
-        table.add_column("Last Modified", style=GREEN, no_wrap=True) # Added column
-        table.add_column("Storage", style=YELLOW, no_wrap=True)
-        table.add_column("Path", style=BASE0)
+    def format_dirs_table(
+        self,
+        dirs: List[FileInfo],
+        root_path: Path,
+        total_size: Optional[int] = None,
+    ) -> Table:
+        """Format the largest directories as a proportional usage table."""
+        return self._format_usage_table(
+            "Largest Directories", BLUE, dirs, root_path, total_size
+        )
 
-        for dir_info in dirs:
-            try:
-                rel_path = dir_info.path.relative_to(root_path)
-            except ValueError:
-                rel_path = dir_info.path
-
-            storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style=BLUE if dir_info.is_icloud else GREEN)
-            last_modified_str = datetime.fromtimestamp(dir_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
-
-            table.add_row(
-                format_size(dir_info.size),
-                last_modified_str, # Added formatted timestamp
-                storage_cell,
-                str(rel_path)
-            )
-
-        return table
-
-    def format_access_issues(self, issues: dict[Path, str]) -> Optional[Table]:
-        """Format access issues into a rich table.
-
-        Args:
-            issues: Dictionary of paths and their access errors
-
-        Returns:
-            Rich table of formatted issues, or None if no issues
-        """
+    def format_access_issues(self, issues: Dict[Path, str]) -> Optional[Table]:
+        """Format access issues grouped by error message."""
         if not issues:
             return None
 
@@ -132,39 +144,39 @@ class TableFormatter:
             title_justify="left",
             border_style=YELLOW,
         )
-
-        # Group issues by error type
-        issues_by_type: dict[str, List[Path]] = {}
+        issues_by_type: Dict[str, List[Path]] = {}
         for path, error in issues.items():
             issues_by_type.setdefault(error, []).append(path)
 
         for error_type, paths in issues_by_type.items():
             table.add_row(f"[{YELLOW}]•[/]", f"[{YELLOW}]{error_type}[/] ({len(paths)} items)")
-            # Show up to three examples per error type
             for sample in sorted(paths)[:3]:
                 table.add_row("  [dim]>[/dim]", f"[dim]{sample.name}[/dim]")
             if len(paths) > 3:
                 table.add_row(
-                    "  [dim]>[/dim]", f"[dim]...and {len(paths) - 3} more similar items[/dim]"
+                    "  [dim]>[/dim]",
+                    f"[dim]...and {len(paths) - 3} more similar items[/dim]",
                 )
 
         return table
 
     def print_scan_summary(
-        self, files: List[FileInfo], dirs: List[FileInfo], root_path: Path, issues: dict[Path, str]
+        self,
+        files: List[FileInfo],
+        dirs: List[FileInfo],
+        root_path: Path,
+        issues: Dict[Path, str],
+        total_size: Optional[int] = None,
     ) -> None:
-        """Print complete scan results.
+        """Print the complete scan result."""
+        if total_size is None:
+            root_entry = next((item for item in dirs if item.path == root_path), None)
+            total_size = root_entry.size if root_entry is not None else None
 
-        Args:
-            files: List of largest files
-            dirs: List of largest directories
-            root_path: Root path that was scanned
-            issues: Dictionary of access issues
-        """
         self.console.print()
-        self.console.print(self.format_files_table(files, root_path))
+        self.console.print(self.format_files_table(files, root_path, total_size))
         self.console.print()
-        self.console.print(self.format_dirs_table(dirs, root_path))
+        self.console.print(self.format_dirs_table(dirs, root_path, total_size))
 
         if issues:
             self.console.print()

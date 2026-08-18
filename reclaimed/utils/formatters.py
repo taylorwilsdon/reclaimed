@@ -91,6 +91,23 @@ def format_size(size: int, precision: int = 1) -> str:
     return SizeFormatter.format_size(size, precision)
 
 
+def format_bar(fraction: float, width: int = 20) -> str:
+    """Render a proportional block bar.
+
+    Args:
+        fraction: Filled proportion. Values outside 0..1 are clamped.
+        width: Number of character cells in the bar.
+
+    Returns:
+        A fixed-width bar made from full-block characters and spaces.
+    """
+    if width < 0:
+        raise ValueError("Bar width cannot be negative")
+    clamped = min(1.0, max(0.0, fraction))
+    filled = int(round(clamped * width))
+    return "█" * filled + " " * (width - filled)
+
+
 def parse_size(size_str: str) -> int:
     """Convenience function for parsing size strings.
 

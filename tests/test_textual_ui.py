@@ -1,103 +1,97 @@
 """Tests for the Textual UI functionality."""
 
-import os
-import sys
-import pytest
+import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Mock the textual imports to avoid requiring the package for tests
-sys.modules['textual'] = MagicMock()
-sys.modules['textual.app'] = MagicMock()
-sys.modules['textual.widgets'] = MagicMock()
-sys.modules['textual.binding'] = MagicMock()
-sys.modules['textual.containers'] = MagicMock()
-sys.modules['textual.screen'] = MagicMock()
-sys.modules['textual.on'] = MagicMock()
-sys.modules['rich.text'] = MagicMock()
-sys.modules['textual.worker'] = MagicMock()
+from textual.widgets import DataTable, Select
 
-# Import after mocking
 from reclaimed.core.types import FileInfo, ScanOptions
-from reclaimed.ui.textual_app import run_textual_ui, ReclaimedApp, ConfirmationDialog, SortOptions
+from reclaimed.ui.textual_app import ReclaimedApp, ReclaimedHeader, run_textual_ui
 
 
-@pytest.fixture
-def mock_file_info():
-    """Create mock file info objects for testing."""
-    return [
-        FileInfo(Path("/test/file1.txt"), 1024, False),
-        FileInfo(Path("/test/file2.txt"), 2048, True),
+def test_sort_keys() -> None:
+    """The supported sort keys produce the expected ordering."""
+    file_a = FileInfo(Path("/test/a.txt"), 3000, 0.0, False)
+    file_b = FileInfo(Path("/test/b.txt"), 2000, 0.0, False)
+    file_c = FileInfo(Path("/test/c.txt"), 1000, 0.0, False)
+
+    assert sorted((file_c, file_a, file_b), key=lambda item: item.path.name.lower()) == [
+        file_a,
+        file_b,
+        file_c,
+    ]
+    assert sorted((file_c, file_a, file_b), key=lambda item: str(item.path).lower()) == [
+        file_a,
+        file_b,
+        file_c,
+    ]
+    assert sorted((file_c, file_a, file_b), key=lambda item: -item.size) == [
+        file_a,
+        file_b,
+        file_c,
     ]
 
 
-@pytest.fixture
-def mock_dir_info():
-    """Create mock directory info objects for testing."""
-    return [
-        FileInfo(Path("/test/dir1"), 4096, False),
-        FileInfo(Path("/test/dir2"), 8192, True),
-    ]
+def test_modern_dashboard_mounts_and_responds(tmp_path: Path) -> None:
+    """The real Textual widget tree mounts at wide and narrow breakpoints."""
+
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+
+            assert app.theme == "solarized-dark"
+            assert app.screen.has_class("-wide")
+            assert app.query_one("#app-header", ReclaimedHeader).region.height == 3
+            assert app.query_one("#sort-select", Select).compact is True
+
+            tables = list(app.query(DataTable))
+            assert len(tables) == 2
+            assert all(table.cursor_type == "row" for table in tables)
+            assert all(table.zebra_stripes for table in tables)
+
+            await pilot.resize_terminal(70, 30)
+            await pilot.pause()
+            assert app.screen.has_class("-narrow")
+            assert not app.screen.has_class("-wide")
+
+    asyncio.run(exercise_app())
 
 
-class TestReclaimedApp:
-    """Test the ReclaimedApp class."""
+def test_toolbar_sort_and_theme_actions(tmp_path: Path) -> None:
+    """Toolbar controls sort the displayed data and cycle built-in themes."""
 
-    def test_sort_keys_exist(self):
-        """Test that sort key functions work correctly."""
-        # Create test data
-        file_a = FileInfo(Path("/test/a.txt"), 3000, False)
-        file_b = FileInfo(Path("/test/b.txt"), 2000, False)
-        file_c = FileInfo(Path("/test/c.txt"), 1000, False)
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            app.largest_files = [
+                FileInfo(tmp_path / "z.txt", 10, 1.0, False),
+                FileInfo(tmp_path / "a.txt", 20, 2.0, False),
+            ]
+            app.largest_dirs = []
+            app._files_sorted = False
+            app._dirs_sorted = False
 
-        # Test sort by name key function
-        name_key = lambda x: x.path.name.lower()
-        assert name_key(file_a) < name_key(file_b) < name_key(file_c)
+            app.query_one("#sort-select", Select).value = "sort-name"
+            await pilot.pause()
+            assert [item.path.name for item in app.largest_files] == ["a.txt", "z.txt"]
 
-        # Test sort by path key function
-        path_key = lambda x: str(x.path).lower()
-        assert path_key(file_a) < path_key(file_b) < path_key(file_c)
+            app.action_next_theme()
+            await pilot.pause()
+            assert app.theme == "nord"
 
-        # Test sort by size key function (negative for descending order)
-        size_key = lambda x: -x.size
-        assert size_key(file_a) < size_key(file_b) < size_key(file_c)
-
-    def test_sort_keys(self):
-        """Test the sort key functions."""
-        # Create test data
-        file_a = FileInfo(Path("/test/a.txt"), 3000, False)
-        file_b = FileInfo(Path("/test/b.txt"), 2000, False)
-        file_c = FileInfo(Path("/test/c.txt"), 1000, False)
-
-        # Test sort by name key function
-        name_key = lambda x: x.path.name.lower()
-        assert name_key(file_a) < name_key(file_b) < name_key(file_c)
-
-        # Test sort by path key function
-        path_key = lambda x: str(x.path).lower()
-        assert path_key(file_a) < path_key(file_b) < path_key(file_c)
-
-        # Test sort by size key function (negative for descending order)
-        size_key = lambda x: -x.size
-        assert size_key(file_a) < size_key(file_b) < size_key(file_c)
+    asyncio.run(exercise_app())
 
 
-# Removing TestConfirmationDialog class as it requires complex mocking
-
-
-# Removing TestSortOptions class as it requires complex mocking
-
-
-def test_run_textual_ui():
-    """Test the run_textual_ui function."""
-    with patch("reclaimed.ui.textual_app.ReclaimedApp") as MockApp:
-        # Setup the mock
+def test_run_textual_ui() -> None:
+    """The entry point constructs and runs the app."""
+    with patch("reclaimed.ui.textual_app.ReclaimedApp") as mock_app:
         mock_app_instance = MagicMock()
-        MockApp.return_value = mock_app_instance
+        mock_app.return_value = mock_app_instance
 
-        # Call the function
         run_textual_ui(Path("/test"), 50, 30)
 
-        # Just verify that the mock was called and run was called
-        assert MockApp.called
+        assert mock_app.called
         assert mock_app_instance.run.called

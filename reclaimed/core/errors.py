@@ -1,7 +1,10 @@
 """Custom error types for the disk scanner."""
 
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .types import ScanResult
 
 
 class DiskScannerError(Exception):
@@ -41,9 +44,19 @@ class IOError(AccessError):
 
 
 class ScanInterruptedError(DiskScannerError):
-    """Error when scanning is interrupted."""
+    """Error when scanning is interrupted.
 
-    def __init__(self, message: str = "Scan interrupted by user"):
+    Carries the results gathered before the interrupt so callers can still
+    display partial output. ``partial`` is None only if the scan was
+    interrupted before any state could be assembled.
+    """
+
+    def __init__(
+        self,
+        message: str = "Scan interrupted by user",
+        partial: Optional["ScanResult"] = None,
+    ):
+        self.partial = partial
         super().__init__(message)
 
 

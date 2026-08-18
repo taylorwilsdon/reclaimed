@@ -1,8 +1,10 @@
-import pytest
+import asyncio
 import json
-import tempfile
+import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 from reclaimed.core.errors import InvalidPathError, ScanInterruptedError
 from reclaimed.core.scanner import DiskScanner
@@ -71,21 +73,20 @@ def test_max_files_limit(tmp_path):
     assert result.files[0].size > result.files[1].size
 
 
-def test_scan_async_functionality(sample_file_structure):
-    """Test functionality that would be tested by async scan."""
-    # Instead of testing the async method directly, we'll test the
-    # synchronous scan method which uses the same underlying logic
-    scanner = DiskScanner()
-    result = scanner.scan(sample_file_structure)
+def test_scan_async_yields_progress(sample_file_structure):
+    """scan_async drives a real event loop and ends with an exact snapshot."""
 
-    # Verify the scan completed successfully
-    assert result.total_size > 0
-    assert result.files_scanned > 0
-    assert isinstance(result.files, list)
-    assert isinstance(result.directories, list)
+    async def collect():
+        return [p async for p in DiskScanner().scan_async(sample_file_structure)]
 
-    # Verify we have the expected files
-    assert len(result.files) == 3  # We created 3 files in sample_file_structure
+    updates = asyncio.run(collect())
+
+    assert updates, "scan_async yielded nothing"
+    final = updates[-1]
+    assert final.progress == 1.0
+    assert final.scanned == 3
+    assert final.total_size == 2700
+    assert len(final.files) == 3
 
 
 def test_access_issues(mock_filesystem):
@@ -151,89 +152,125 @@ def test_scan_interruption(mock_filesystem, monkeypatch):
         scanner.scan(mock_filesystem)
 
 
-def test_insert_sorted():
-    """Test the _insert_sorted method for maintaining sorted lists."""
-    scanner = DiskScanner()
+def test_top_n_files_selection(tmp_path):
+    """Only the largest files survive, in descending order."""
+    for i in range(20):
+        (tmp_path / f"f{i}.bin").write_bytes(b"x" * (1000 + i * 10))
 
-    # Create test data
-    items = []
-    file1 = FileInfo(Path("/test/file1.txt"), 1000, False)
-    file2 = FileInfo(Path("/test/file2.txt"), 2000, False)
-    file3 = FileInfo(Path("/test/file3.txt"), 3000, False)
-    file4 = FileInfo(Path("/test/file4.txt"), 500, False)
+    result = DiskScanner(ScanOptions(max_files=5)).scan(tmp_path)
 
-    # Insert items and check order
-    scanner._insert_sorted(items, file2)  # [2000]
-    assert len(items) == 1
-    assert items[0].size == 2000
-
-    scanner._insert_sorted(items, file3)  # [3000, 2000]
-    assert len(items) == 2
-    assert items[0].size == 3000
-    assert items[1].size == 2000
-
-    scanner._insert_sorted(items, file1)  # [3000, 2000, 1000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[1].size == 2000
-    assert items[2].size == 1000
-
-    scanner._insert_sorted(items, file4)  # [3000, 2000, 1000, 500]
-    assert len(items) == 4
-    assert items[0].size == 3000
-    assert items[3].size == 500
-
-    # Test with max_items limit
-    items = [file3, file2, file1]  # [3000, 2000, 1000]
-
-    # This should not be inserted (smaller than smallest item)
-    scanner._insert_sorted(items, file4, max_items=3)  # Still [3000, 2000, 1000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[2].size == 1000
-
-    # Create a file that should be inserted in the middle
-    file5 = FileInfo(Path("/test/file5.txt"), 2500, False)
-    scanner._insert_sorted(items, file5, max_items=3)  # [3000, 2500, 2000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[1].size == 2500
-    assert items[2].size == 2000
+    assert [f.size for f in result.files] == [1190, 1180, 1170, 1160, 1150]
 
 
-def test_update_dir_sizes():
-    """Test the _update_dir_sizes method."""
-    scanner = DiskScanner()
+def test_files_with_equal_sizes_do_not_break_ordering(tmp_path):
+    """Equal sizes are resolved deterministically without comparing Path objects."""
+    for name in ("a.bin", "b.bin", "c.bin"):
+        (tmp_path / name).write_bytes(b"x" * 500)
 
-    # Create a test file path with multiple parent directories
-    file_path = Path("/test/dir1/dir2/file.txt")
-    file_size = 1024
-    is_icloud = True
+    result = DiskScanner(ScanOptions(max_files=2)).scan(tmp_path)
 
-    # Update directory sizes
-    scanner._update_dir_sizes(file_path, file_size, is_icloud)
+    assert [file_info.path.name for file_info in result.files] == ["a.bin", "b.bin"]
 
-    # Check that all parent directories were updated
-    for parent in file_path.parents:
-        assert parent in scanner._dir_sizes
-        size, is_cloud = scanner._dir_sizes[parent]
-        assert size == file_size
-        assert is_cloud == is_icloud
 
-    # Add another file in the same directory
-    file_path2 = Path("/test/dir1/dir2/file2.txt")
-    file_size2 = 2048
-    is_icloud2 = False
+def test_directory_results_bounded_by_scan_root(sample_file_structure):
+    """No ancestor of the scan root may appear in the directory results.
 
-    scanner._update_dir_sizes(file_path2, file_size2, is_icloud2)
+    Regression test for the bug where every parent up to '/' accumulated the
+    full scan total and crowded the real directories out of the table.
+    """
+    root = sample_file_structure
+    result = DiskScanner().scan(root)
 
-    # Check that parent directories have accumulated sizes
-    for parent in file_path2.parents:
-        assert parent in scanner._dir_sizes
-        size, is_cloud = scanner._dir_sizes[parent]
-        assert size == file_size + file_size2
-        # Once a directory contains an iCloud file, it stays marked as iCloud
-        assert is_cloud == True
+    paths = {d.path for d in result.directories}
+    assert Path("/") not in paths
+    assert root.parent not in paths
+    assert all(p == root or root in p.parents for p in paths)
+
+    # The root's rolled-up size is the whole scan.
+    root_entry = next(d for d in result.directories if d.path == root)
+    assert root_entry.size == result.total_size
+
+
+def test_deep_tree_rollup(tmp_path):
+    """Subtree totals remain exact in a deeply nested tree."""
+    current = tmp_path
+    for name in ("a", "b", "c", "d", "e"):
+        current = current / name
+        current.mkdir()
+        (current / "f.bin").write_bytes(b"x" * 100)
+
+    result = DiskScanner(ScanOptions(max_dirs=10)).scan(tmp_path)
+    sizes = {d.path.name: d.size for d in result.directories}
+
+    assert sizes["a"] == 500  # five files of 100 bytes below it
+    assert sizes["e"] == 100  # the deepest holds only its own
+    assert result.total_size == 500
+
+
+def test_sync_and_async_agree(sample_file_structure):
+    """The two entry points share one implementation, so they must not diverge."""
+    sync_result = DiskScanner().scan(sample_file_structure)
+
+    async def collect():
+        return [p async for p in DiskScanner().scan_async(sample_file_structure)]
+
+    updates = asyncio.run(collect())
+    final = updates[-1]
+
+    assert final.progress == 1.0
+    assert final.scanned == sync_result.files_scanned
+    assert final.total_size == sync_result.total_size
+    assert [f.path for f in final.files] == [f.path for f in sync_result.files]
+    assert [d.path for d in final.dirs] == [d.path for d in sync_result.directories]
+
+
+def test_threaded_matches_serial(mock_filesystem):
+    """Worker count must not change results."""
+    serial = DiskScanner(ScanOptions(max_workers=1)).scan(mock_filesystem)
+    threaded = DiskScanner(ScanOptions(max_workers=4)).scan(mock_filesystem)
+
+    assert serial.total_size == threaded.total_size
+    assert serial.files_scanned == threaded.files_scanned
+    assert [f.path for f in serial.files] == [f.path for f in threaded.files]
+    assert [d.path for d in serial.directories] == [d.path for d in threaded.directories]
+
+
+def test_symlinks_are_not_followed(tmp_path):
+    """Symlinked files and directories contribute nothing to the total."""
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / "data.bin").write_bytes(b"x" * 400)
+
+    (tmp_path / "link_to_dir").symlink_to(real_dir, target_is_directory=True)
+    (tmp_path / "link_to_file").symlink_to(real_dir / "data.bin")
+
+    result = DiskScanner().scan(tmp_path)
+
+    assert result.total_size == 400
+    assert result.files_scanned == 1
+
+
+def test_partial_results_on_interrupt(mock_filesystem, monkeypatch):
+    """An interrupted scan carries what it managed to collect."""
+    real_scandir = os.scandir
+    calls = {"n": 0}
+
+    def flaky_scandir(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise KeyboardInterrupt()
+        return real_scandir(*args, **kwargs)
+
+    monkeypatch.setattr("os.scandir", flaky_scandir)
+
+    scanner = DiskScanner(options=ScanOptions(max_workers=1))
+    with pytest.raises(ScanInterruptedError) as exc_info:
+        scanner.scan(mock_filesystem)
+
+    partial = exc_info.value.partial
+    assert partial is not None
+    assert partial is scanner.last_partial_result
+    assert isinstance(partial, ScanResult)
 
 
 def test_save_results(tmp_path):
