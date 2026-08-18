@@ -185,7 +185,7 @@ def main(
 
             # Save results if output path is specified
             if output:
-                scanner.save_results(output, result.files, result.directories, path)
+                scanner.save_scan_result(output, result, path)
 
             return
 
@@ -197,7 +197,7 @@ def main(
             and e.partial is not None
         ):
             try:
-                scanner.save_results(output, e.partial.files, e.partial.directories, path)
+                scanner.save_scan_result(output, e.partial, path)
             except DiskScannerError as save_error:
                 sys.exit(handle_scan_error(save_error, console, path))
         sys.exit(handle_scan_error(e, console, path))

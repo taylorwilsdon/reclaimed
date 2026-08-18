@@ -28,7 +28,8 @@ from textual.widgets import (
 )
 from textual.worker import Worker, WorkerState
 
-from ..core import DiskScanner, FileInfo, ScanOptions
+from ..core import DiskScanner, FileInfo, ScanOptions, ScanResult
+from ..core.errors import DiskScannerError
 from ..utils.formatters import format_bar, format_size
 from .formatters import format_display_path, format_percentage
 from .styles import TEXTUAL_CSS
@@ -194,6 +195,7 @@ class ReclaimedApp(App[None]):
         self.options = options
         self.on_exit_callback = on_exit_callback
         self.scanner = DiskScanner(options)
+        self.completed_result: Optional[ScanResult] = None
         self.largest_files: List[FileInfo] = []
         self.largest_dirs: List[FileInfo] = []
         self.current_focus = "files"  # Tracks which table has focus
@@ -355,6 +357,7 @@ class ReclaimedApp(App[None]):
         # Reset state before starting new scan
         self.largest_files = []
         self.largest_dirs = []
+        self.completed_result = None
         self._last_table_items.clear()
         for table_name in ("files-table", "dirs-table"):
             self._displayed_items[table_name] = []
@@ -569,6 +572,18 @@ class ReclaimedApp(App[None]):
                 if "dirs" in result and result["dirs"]:
                     self.largest_dirs = result["dirs"]
                     self._dirs_sorted = False
+
+            # Keep export data independent from the mutable lists backing the
+            # interactive tables. Hiding and deletion may alter those lists.
+            if self.scanner.last_result is not None:
+                completed = self.scanner.last_result
+                self.completed_result = ScanResult(
+                    files=list(completed.files),
+                    directories=list(completed.directories),
+                    total_size=completed.total_size,
+                    files_scanned=completed.files_scanned,
+                    access_issues=dict(completed.access_issues),
+                )
 
             # Get elapsed time for notification
             elapsed = time.monotonic() - self.start_time
@@ -1096,4 +1111,6 @@ def run_textual_ui(
     app = ReclaimedApp(path, options)
     app.run()
     if output_path is not None:
-        app.scanner.save_results(output_path, app.largest_files, app.largest_dirs, app.path)
+        if app.completed_result is None:
+            raise DiskScannerError("Cannot export results because no scan completed")
+        app.scanner.save_scan_result(output_path, app.completed_result, app.path)

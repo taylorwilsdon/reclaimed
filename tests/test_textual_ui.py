@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from textual.widgets import DataTable, Select
 
-from reclaimed.core.types import FileInfo, ScanOptions
+from reclaimed.core.types import FileInfo, ScanOptions, ScanResult
 from reclaimed.ui.textual_app import ReclaimedApp, ReclaimedHeader, run_textual_ui
 
 
@@ -95,3 +95,27 @@ def test_run_textual_ui() -> None:
 
         assert mock_app.called
         assert mock_app_instance.run.called
+
+
+def test_interactive_export_uses_completed_snapshot(tmp_path: Path) -> None:
+    """UI mutations cannot leak into the JSON export source."""
+    output = tmp_path / "results.json"
+    completed = ScanResult(
+        files=[FileInfo(tmp_path / "original.bin", 10, 0.0, False)],
+        directories=[FileInfo(tmp_path, 10, 0.0, False)],
+        total_size=10,
+        files_scanned=1,
+        access_issues={},
+    )
+
+    with patch("reclaimed.ui.textual_app.ReclaimedApp") as mock_app:
+        app = mock_app.return_value
+        app.completed_result = completed
+        app.path = tmp_path
+        # These represent UI state after hiding or deleting results.
+        app.largest_files = []
+        app.largest_dirs = []
+
+        run_textual_ui(tmp_path, output_path=output)
+
+    app.scanner.save_scan_result.assert_called_once_with(output, completed, tmp_path)

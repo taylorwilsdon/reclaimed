@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./reclaimed-social-transparent.png" alt="Reclaimed — disk space management" width="100%">
+  <img src="https://raw.githubusercontent.com/taylorwilsdon/reclaimed/main/reclaimed-social-transparent.png" alt="Reclaimed — disk space management" width="100%">
 </p>
 
 <p align="center">

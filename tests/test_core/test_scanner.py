@@ -250,6 +250,21 @@ def test_symlinks_are_not_followed(tmp_path):
     assert result.files_scanned == 1
 
 
+def test_mobile_documents_is_detected_without_explicit_icloud_base(tmp_path):
+    """The standard macOS iCloud marker works with default CLI options."""
+    cloud_dir = tmp_path / "Mobile Documents"
+    cloud_dir.mkdir()
+    cloud_file = cloud_dir / "cloud.bin"
+    cloud_file.write_bytes(b"cloud")
+
+    result = DiskScanner().scan(tmp_path)
+
+    file_info = next(item for item in result.files if item.path == cloud_file)
+    dir_info = next(item for item in result.directories if item.path == cloud_dir)
+    assert file_info.is_icloud is True
+    assert dir_info.is_icloud is True
+
+
 def test_partial_results_on_interrupt(mock_filesystem, monkeypatch):
     """An interrupted scan carries what it managed to collect."""
     real_scandir = os.scandir
@@ -331,6 +346,33 @@ def test_save_results(tmp_path):
     assert results["largest_directories"][0]["size_bytes"] == 3000
     assert results["largest_directories"][1]["size_bytes"] == 4000
     assert results["largest_directories"][1]["storage_type"] == "icloud"
+
+
+def test_save_scan_result_ignores_mutated_scanner_state(tmp_path):
+    """Snapshot exports remain coherent after interactive state changes."""
+    scanner = DiskScanner()
+    snapshot = ScanResult(
+        files=[FileInfo(tmp_path / "file.bin", 25, 0.0, False)],
+        directories=[FileInfo(tmp_path, 25, 0.0, False)],
+        total_size=25,
+        files_scanned=1,
+        access_issues={tmp_path / "blocked": "Permission denied"},
+    )
+    scanner._total_size = 999
+    scanner._file_count = 999
+    scanner._access_issues = {}
+    scanner.console = MagicMock()
+    output_path = tmp_path / "snapshot.json"
+
+    scanner.save_scan_result(output_path, snapshot, tmp_path)
+
+    with open(output_path, encoding="utf-8") as output_file:
+        saved = json.load(output_file)
+    assert saved["scan_info"]["total_size_bytes"] == 25
+    assert saved["scan_info"]["files_scanned"] == 1
+    assert saved["access_issues"] == [
+        {"path": str(tmp_path / "blocked"), "error": "Permission denied"}
+    ]
 
 
 def test_scan_async_exists():

@@ -87,6 +87,8 @@ class DiskScanner:
         self._file_count = 0
         #: Results from the most recent interrupted scan, if any.
         self.last_partial_result: Optional[ScanResult] = None
+        #: Immutable snapshot from the most recent successfully completed scan.
+        self.last_result: Optional[ScanResult] = None
         self._reset_state()
 
     # ------------------------------------------------------------------
@@ -143,7 +145,9 @@ class DiskScanner:
                             request = engine.send(None)
                 except StopIteration:
                     pass
-            return self._build_result()
+            result = self._build_result()
+            self.last_result = result
+            return result
         except KeyboardInterrupt:
             raise self._interrupted() from None
         finally:
@@ -196,6 +200,7 @@ class DiskScanner:
             executor.shutdown(wait=False)
 
         result = self._build_result()
+        self.last_result = result
         yield ScanProgress(
             progress=1.0,
             files=result.files,
@@ -253,8 +258,12 @@ class DiskScanner:
 
         for name, path in listing.subdirs:
             child_icloud = is_icloud or (
-                self._icloud_base is not None
-                and (name == MOBILE_DOCUMENTS or path == self._icloud_base)
+                name == MOBILE_DOCUMENTS
+                or (
+                    self._icloud_base is not None
+                    and name == os.path.basename(self._icloud_base)
+                    and os.path.realpath(path) == self._icloud_base
+                )
             )
             frontier.append(self._new_dir(path, dir_id, child_icloud))
 
@@ -481,14 +490,18 @@ class DiskScanner:
         )
 
         if root_path is not None:
+            self.last_result = None
+            self.last_partial_result = None
             root = str(root_path)
             comparable_root = os.path.realpath(root)
             # Seed from the full root string so that a scan rooted inside
             # iCloud is recognised even though its marker lies above the root.
-            root_icloud = self._icloud_base is not None and (
-                comparable_root == self._icloud_base
-                or comparable_root.startswith(self._icloud_base + os.sep)
-                or MOBILE_DOCUMENTS in comparable_root
+            root_icloud = MOBILE_DOCUMENTS in Path(comparable_root).parts or (
+                self._icloud_base is not None
+                and (
+                    comparable_root == self._icloud_base
+                    or comparable_root.startswith(self._icloud_base + os.sep)
+                )
             )
             self._frontier.append(self._new_dir(root, -1, root_icloud))
 
@@ -507,15 +520,33 @@ class DiskScanner:
             dirs: List of largest directories.
             scanned_path: The root directory that was scanned.
         """
+        result = ScanResult(
+            files=list(files),
+            directories=list(dirs),
+            total_size=self._total_size,
+            files_scanned=self._file_count,
+            access_issues=dict(self._access_issues),
+        )
+        self.save_scan_result(output_path, result, scanned_path)
+
+    def save_scan_result(
+        self, output_path: Path, result: ScanResult, scanned_path: Path
+    ) -> None:
+        """Save one self-contained scan snapshot to JSON.
+
+        Unlike :meth:`save_results`, this method does not consult mutable
+        scanner state. It is therefore safe to use after an interactive UI has
+        hidden, sorted, or deleted displayed entries.
+        """
         from ..ui.styles import GREEN
 
         results = {
             "scan_info": {
                 "timestamp": datetime.now().isoformat(),
                 "scanned_path": str(scanned_path.absolute()),
-                "total_size_bytes": self._total_size,
-                "total_size_human": format_size(self._total_size),
-                "files_scanned": self._file_count,
+                "total_size_bytes": result.total_size,
+                "total_size_human": format_size(result.total_size),
+                "files_scanned": result.files_scanned,
             },
             "largest_files": [
                 {
@@ -524,7 +555,7 @@ class DiskScanner:
                     "size_human": format_size(f.size),
                     "storage_type": "icloud" if f.is_icloud else "local",
                 }
-                for f in files
+                for f in result.files
             ],
             "largest_directories": [
                 {
@@ -533,10 +564,11 @@ class DiskScanner:
                     "size_human": format_size(d.size),
                     "storage_type": "icloud" if d.is_icloud else "local",
                 }
-                for d in dirs
+                for d in result.directories
             ],
             "access_issues": [
-                {"path": str(path), "error": error} for path, error in self._access_issues.items()
+                {"path": str(path), "error": error}
+                for path, error in result.access_issues.items()
             ],
         }
 
