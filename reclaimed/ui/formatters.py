@@ -10,7 +10,7 @@ from rich.text import Text
 
 from ..core.types import FileInfo
 from ..utils.formatters import format_size
-from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, YELLOW
+from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, VIOLET, YELLOW
 
 
 class TableFormatter:
@@ -23,6 +23,23 @@ class TableFormatter:
             console: Rich console to use for output
         """
         self.console = console or Console()
+
+    @staticmethod
+    def _storage_cell(is_icloud: bool, is_onedrive: bool) -> Text:
+        """Build the storage status cell for a file or directory.
+
+        Args:
+            is_icloud: Whether the item is in iCloud
+            is_onedrive: Whether the item is in OneDrive
+
+        Returns:
+            Rich Text with the storage status label and color
+        """
+        if is_icloud:
+            return Text("☁️ iCloud", style=BLUE)
+        if is_onedrive:
+            return Text("☁️ OneDrive", style=VIOLET)
+        return Text("💾 Local", style=GREEN)
 
     def format_files_table(self, files: List[FileInfo], root_path: Path) -> Table:
         """Format list of files into a rich table.
@@ -54,8 +71,7 @@ class TableFormatter:
             except ValueError:
                 rel_path = file_info.path
 
-            storage_status = "☁️ iCloud" if file_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style=BLUE if file_info.is_icloud else GREEN)
+            storage_cell = self._storage_cell(file_info.is_icloud, file_info.is_onedrive)
             # Format timestamp
             last_modified_str = datetime.fromtimestamp(file_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -98,8 +114,7 @@ class TableFormatter:
             except ValueError:
                 rel_path = dir_info.path
 
-            storage_status = "☁️ iCloud" if dir_info.is_icloud else "💾 Local"
-            storage_cell = Text(storage_status, style=BLUE if dir_info.is_icloud else GREEN)
+            storage_cell = self._storage_cell(dir_info.is_icloud, dir_info.is_onedrive)
             last_modified_str = datetime.fromtimestamp(dir_info.last_modified).strftime('%Y-%m-%d %H:%M:%S')
 
             table.add_row(

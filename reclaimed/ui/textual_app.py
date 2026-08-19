@@ -28,7 +28,7 @@ from textual.worker import Worker, WorkerState
 
 from ..core import DiskScanner, FileInfo, ScanOptions
 from ..utils.formatters import format_size
-from .styles import TEXTUAL_CSS
+from .styles import TEXTUAL_CSS, VIOLET
 
 
 class ProgressManager:
@@ -131,11 +131,9 @@ class ReclaimedApp(App):
         Binding("?", "help", "Help"),
     ]
 
-    # Table column indices - keep these constants in sync with add_columns calls
-    COL_SIZE = 0
-    COL_LAST_MODIFIED = 1
-    COL_STORAGE = 2
-    COL_PATH = 3
+    # Path is always the last column in both tables (dirs-table has an extra
+    # leading "Status" column that files-table doesn't), so index from the end
+    COL_PATH = -1
 
     def __init__(
         self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
@@ -170,14 +168,16 @@ class ReclaimedApp(App):
             with Horizontal(id="status-bar"):
                 yield Static("Path:", id="status-label")
                 yield Static(f"{self.path}", id="path-display")
+                yield Static("", id="scan-state")
                 yield Static("", id="scan-timer")
                 yield Static("", id="scan-count")
 
             # Directories section
             yield Static("[bold]Largest Directories[/bold]", id="dirs-section-header")
             dirs_table = DataTable(id="dirs-table")
-            # Add "Last Modified" column
-            dirs_table.add_columns("Size", "Last Modified", "Storage", "Path")
+            # Leading "Status" column shows whether a directory's subtree is
+            # still being scanned or fully counted
+            dirs_table.add_columns("Status", "Size", "Last Modified", "Storage", "Path")
             yield dirs_table
 
             # Files section
@@ -227,6 +227,14 @@ class ReclaimedApp(App):
             loading.styles.display = "block"
         except Exception:
             # Loading indicator might not be mounted yet
+            pass
+
+        # Show global scan state
+        try:
+            state_display = self.query_one("#scan-state")
+            state_display.update("[#ebc13d]🔄 Scanning...[/]")
+        except Exception:
+            # State display might not be mounted yet
             pass
 
         # Start async scan with optimized worker function
@@ -425,6 +433,13 @@ class ReclaimedApp(App):
             # Show completion notification
             self.notify(f"Scan complete in {elapsed:.1f}s. Found {file_count:,} files.", timeout=5)
 
+            # Update global scan state
+            try:
+                state_display = self.query_one("#scan-state")
+                state_display.update("[#84c747]✓ Scan complete[/]")
+            except Exception:
+                pass
+
             # Clean up timer task
             if hasattr(self, "_timer_task"):
                 self._timer_task.cancel()
@@ -445,6 +460,13 @@ class ReclaimedApp(App):
             if loading:
                 loading.styles.display = "none"
             self.notify("Scan failed!", severity="error")
+
+            # Update global scan state
+            try:
+                state_display = self.query_one("#scan-state")
+                state_display.update("[#ff665c]✗ Scan failed[/]")
+            except Exception:
+                pass
 
     # Track last table update to avoid redundant updates
     _last_table_update = {}
@@ -663,18 +685,28 @@ class ReclaimedApp(App):
             # Handle path comparison errors (e.g., different drives on Windows)
             display_path = absolute_path
 
-        storage_status = "☁️ iCloud" if item_info.is_icloud else "💾 Local"
-        storage_cell = Text(storage_status, style="#268bd2" if item_info.is_icloud else "#859900")
+        if item_info.is_icloud:
+            storage_status, storage_style = "☁️ iCloud", "#268bd2"
+        elif item_info.is_onedrive:
+            storage_status, storage_style = "☁️ OneDrive", VIOLET
+        else:
+            storage_status, storage_style = "💾 Local", "#859900"
+        storage_cell = Text(storage_status, style=storage_style)
         # Format timestamp
         last_modified_str = datetime.fromtimestamp(item_info.last_modified).strftime('%y-%m-%d %H:%M')
 
-        table.add_row(
-            format_size(item_info.size),
-            last_modified_str,
-            storage_cell,
-            display_path,
-            key=str(item_info.path)
-        )
+        row_values = [format_size(item_info.size), last_modified_str, storage_cell, display_path]
+
+        # Directories are the only rows whose size can still be growing as the
+        # scan progresses, so only they get a scanning/done indicator
+        if table_id == "dirs-table":
+            if item_info.is_complete:
+                status_cell = Text("✓ Done", style="#84c747")
+            else:
+                status_cell = Text("⏳ Scanning", style="#ebc13d")
+            row_values.insert(0, status_cell)
+
+        table.add_row(*row_values, key=str(item_info.path))
 
     def _is_hidden(self, path: Path) -> bool:
         """Check if a path or any of its parents is hidden.
@@ -800,7 +832,9 @@ class ReclaimedApp(App):
                         path=dir_info.path,
                         size=new_size,
                         last_modified=dir_info.last_modified,
-                        is_icloud=dir_info.is_icloud
+                        is_icloud=dir_info.is_icloud,
+                        is_onedrive=dir_info.is_onedrive,
+                        is_complete=dir_info.is_complete
                     )
                     updated_dirs.append(updated_dir)
                 else:
@@ -1037,7 +1071,11 @@ class ReclaimedApp(App):
 
 
 def run_textual_ui(
-    path: Path, max_files: int = 100, max_dirs: int = 100, skip_dirs: list[str] = None
+    path: Path,
+    max_files: int = 100,
+    max_dirs: int = 100,
+    skip_dirs: list[str] = None,
+    actual_size: bool = True,
 ) -> None:
     """Run the Textual UI application.
 
@@ -1046,6 +1084,7 @@ def run_textual_ui(
         max_files: Maximum number of files to show (minimum, will show more if space allows)
         max_dirs: Maximum number of directories to show (minimum, will show more if space allows)
         skip_dirs: List of directory names to skip
+        actual_size: Count on-disk bytes (default) vs. logical/apparent size for cloud-sync files
     """
     if skip_dirs is None:
         skip_dirs = [".Trash", "System Volume Information"]
@@ -1055,7 +1094,12 @@ def run_textual_ui(
     scanner_max_files = 1000  # Collect up to 1000 files
     scanner_max_dirs = 1000   # Collect up to 1000 directories
 
-    options = ScanOptions(max_files=scanner_max_files, max_dirs=scanner_max_dirs, skip_dirs=skip_dirs)
+    options = ScanOptions(
+        max_files=scanner_max_files,
+        max_dirs=scanner_max_dirs,
+        skip_dirs=skip_dirs,
+        actual_size=actual_size,
+    )
 
     # Store user preferences for UI display
     options.user_max_files = max_files

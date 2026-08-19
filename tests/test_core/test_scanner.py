@@ -49,7 +49,9 @@ def test_basic_scan(sample_file_structure):
 
 def test_directory_size_calculation(sample_file_structure):
     """Test that directory sizes are calculated correctly."""
-    scanner = DiskScanner()
+    # Use apparent size: on-disk size rounds tiny files up to a filesystem
+    # block, which would break this test's exact byte-count assertion.
+    scanner = DiskScanner(options=ScanOptions(actual_size=False))
     result = scanner.scan(sample_file_structure)
 
     # Find dir1 in results
@@ -59,7 +61,9 @@ def test_directory_size_calculation(sample_file_structure):
 
 def test_max_files_limit(tmp_path):
     """Test that max_files limit is respected."""
-    scanner = DiskScanner(options=ScanOptions(max_files=2))
+    # Use apparent size so files of different byte counts don't collapse to
+    # the same on-disk block size and defeat the size-ordering assertion.
+    scanner = DiskScanner(options=ScanOptions(max_files=2, actual_size=False))
 
     # Create more files than the limit
     for i in range(5):
@@ -125,6 +129,135 @@ def test_icloud_detection(tmp_path):
     icloud_files = [f for f in result.files if f.is_icloud]
     assert len(icloud_files) > 0
     assert str(icloud_files[0].path).endswith("test.txt")
+
+
+def test_scan_sync_all_dirs_marked_complete(tmp_path):
+    """Test that the blocking scan() always reports every directory as complete."""
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "a" / "b" / "f.txt").write_text("x" * 100)
+
+    scanner = DiskScanner()
+    result = scanner.scan(tmp_path)
+
+    assert result.directories  # sanity check we found something
+    assert all(d.is_complete for d in result.directories)
+
+
+def test_directory_completion_tracking_mid_scan(tmp_path):
+    """Test that _walk_directory_async marks a finished subtree complete while
+    a sibling subtree that still has pending subdirectories is not."""
+    import asyncio
+
+    (tmp_path / "first").mkdir()
+    (tmp_path / "first" / "f.txt").write_text("a" * 100)
+    (tmp_path / "second" / "nested").mkdir(parents=True)
+    (tmp_path / "second" / "nested" / "g.txt").write_text("b" * 100)
+
+    scanner = DiskScanner()
+    first_dir_snapshot = {}
+
+    async def drive():
+        async for path, is_file, _size, _mtime in scanner._walk_directory_async(tmp_path):
+            if not is_file and path.name == "first" and not first_dir_snapshot:
+                first_dir_snapshot["first"] = (tmp_path / "first") in scanner._completed_dirs
+                first_dir_snapshot["second"] = (tmp_path / "second") in scanner._completed_dirs
+                first_dir_snapshot["root"] = tmp_path in scanner._completed_dirs
+
+    asyncio.run(drive())
+
+    # 'first' has no subdirectories, so it completes as soon as it's processed
+    assert first_dir_snapshot["first"] is True
+    # 'second' still has 'nested' pending at that point
+    assert first_dir_snapshot["second"] is False
+    # root can't be complete while any child subtree is still pending
+    assert first_dir_snapshot["root"] is False
+
+    # After the full walk, everything is complete
+    assert (tmp_path / "first") in scanner._completed_dirs
+    assert (tmp_path / "second") in scanner._completed_dirs
+    assert (tmp_path / "second" / "nested") in scanner._completed_dirs
+    assert tmp_path in scanner._completed_dirs
+
+
+def test_get_largest_dirs_ancestor_completion_tracks_root(tmp_path):
+    """Test that an ancestor of root is reported complete iff root itself is.
+
+    Ancestor directories (parents of the scanned root) are never walked
+    themselves -- only the slice of their contents under root contributes to
+    their size -- so they can never appear in _completed_dirs directly.
+    """
+    scanner = DiskScanner()
+    ancestor = tmp_path.parent
+    scanner._dir_sizes[tmp_path] = (100, False, False)
+    scanner._dir_sizes[ancestor] = (100, False, False)
+
+    # Root not yet complete: ancestor should also show incomplete
+    dirs = scanner._get_largest_dirs(tmp_path)
+    by_path = {d.path: d for d in dirs}
+    assert by_path[tmp_path].is_complete is False
+    assert by_path[ancestor].is_complete is False
+
+    # Once root finishes, the ancestor's partial total is final too
+    scanner._completed_dirs.add(tmp_path)
+    dirs = scanner._get_largest_dirs(tmp_path)
+    by_path = {d.path: d for d in dirs}
+    assert by_path[tmp_path].is_complete is True
+    assert by_path[ancestor].is_complete is True
+
+
+def test_actual_size_defaults_to_true():
+    """Test that actual (on-disk) size mode is the default."""
+    assert ScanOptions().actual_size is True
+
+
+def test_local_disk_size_posix_uses_st_blocks():
+    """Test that POSIX on-disk size is read from st_blocks, in 512-byte units."""
+    # A cloud-only placeholder: large logical size, zero blocks actually allocated
+    placeholder_stat = MagicMock(st_size=57_621_712, st_blocks=0)
+    assert DiskScanner._local_disk_size(placeholder_stat) == 0
+
+    # A fully-downloaded file: blocks roughly track the logical size
+    downloaded_stat = MagicMock(st_size=49_310_040_471, st_blocks=96_308_680)
+    assert DiskScanner._local_disk_size(downloaded_stat) == 96_308_680 * 512
+
+
+def test_local_disk_size_windows_recall_attribute():
+    """Test the Windows fallback: FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS means cloud-only."""
+    # No st_blocks on Windows; use st_file_attributes instead
+    cloud_only_stat = MagicMock(spec=["st_size", "st_file_attributes"], st_size=1234, st_file_attributes=0x00400000)
+    assert DiskScanner._local_disk_size(cloud_only_stat) == 0
+
+    local_stat = MagicMock(spec=["st_size", "st_file_attributes"], st_size=1234, st_file_attributes=0x00000020)
+    assert DiskScanner._local_disk_size(local_stat) == 1234
+
+
+def test_get_size_respects_actual_size_option():
+    """Test that DiskScanner._get_size switches between actual and apparent size."""
+    stat_result = MagicMock(st_size=1000, st_blocks=0)
+
+    actual_scanner = DiskScanner(options=ScanOptions(actual_size=True))
+    assert actual_scanner._get_size(stat_result) == 0
+
+    apparent_scanner = DiskScanner(options=ScanOptions(actual_size=False))
+    assert apparent_scanner._get_size(stat_result) == 1000
+
+
+def test_onedrive_detection(tmp_path):
+    """Test OneDrive file detection."""
+    scanner = DiskScanner(options=ScanOptions(onedrive_base=tmp_path / "OneDrive"))
+
+    # Create mock OneDrive path
+    onedrive_path = tmp_path / "OneDrive/test.txt"
+    onedrive_path.parent.mkdir(parents=True)
+    onedrive_path.write_text("onedrive test")
+
+    result = scanner.scan(tmp_path)
+
+    # Verify OneDrive file was detected
+    onedrive_files = [f for f in result.files if f.is_onedrive]
+    assert len(onedrive_files) > 0
+    assert str(onedrive_files[0].path).endswith("test.txt")
+    assert not onedrive_files[0].is_icloud
 
 
 def test_skip_dirs(mock_filesystem):
@@ -216,9 +349,10 @@ def test_update_dir_sizes():
     # Check that all parent directories were updated
     for parent in file_path.parents:
         assert parent in scanner._dir_sizes
-        size, is_cloud = scanner._dir_sizes[parent]
+        size, is_cloud, is_onedrive = scanner._dir_sizes[parent]
         assert size == file_size
         assert is_cloud == is_icloud
+        assert is_onedrive is False
 
     # Add another file in the same directory
     file_path2 = Path("/test/dir1/dir2/file2.txt")
@@ -230,10 +364,11 @@ def test_update_dir_sizes():
     # Check that parent directories have accumulated sizes
     for parent in file_path2.parents:
         assert parent in scanner._dir_sizes
-        size, is_cloud = scanner._dir_sizes[parent]
+        size, is_cloud, is_onedrive = scanner._dir_sizes[parent]
         assert size == file_size + file_size2
         # Once a directory contains an iCloud file, it stays marked as iCloud
         assert is_cloud == True
+        assert is_onedrive is False
 
 
 def test_save_results(tmp_path):
@@ -243,7 +378,8 @@ def test_save_results(tmp_path):
     # Create test data
     files = [
         FileInfo(Path("/test/file1.txt"), 1000, 1234567890.0, False),
-        FileInfo(Path("/test/file2.txt"), 2000, 1234567891.0, True)
+        FileInfo(Path("/test/file2.txt"), 2000, 1234567891.0, True),
+        FileInfo(Path("/test/file3.txt"), 1500, 1234567894.0, False, True)
     ]
 
     dirs = [
@@ -281,7 +417,7 @@ def test_save_results(tmp_path):
     # Check content
     assert results["scan_info"]["total_size_bytes"] == 10000
     assert results["scan_info"]["files_scanned"] == 5
-    assert len(results["largest_files"]) == 2
+    assert len(results["largest_files"]) == 3
     assert len(results["largest_directories"]) == 2
     assert len(results["access_issues"]) == 1
 
@@ -289,6 +425,7 @@ def test_save_results(tmp_path):
     assert results["largest_files"][0]["size_bytes"] == 1000
     assert results["largest_files"][1]["size_bytes"] == 2000
     assert results["largest_files"][1]["storage_type"] == "icloud"
+    assert results["largest_files"][2]["storage_type"] == "onedrive"
 
     # Check directory details
     assert results["largest_directories"][0]["size_bytes"] == 3000

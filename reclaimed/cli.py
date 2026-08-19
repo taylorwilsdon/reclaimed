@@ -87,6 +87,15 @@ def handle_scan_error(error: Exception, console: Console) -> int:
     default=None,
     help="Path to save the JSON scan results",
 )
+@click.option(
+    "--actual-size/--apparent-size",
+    default=True,
+    help=(
+        "Count on-disk bytes for cloud-sync files (default) so files not yet "
+        "downloaded from iCloud/OneDrive show as ~0 bytes, or --apparent-size "
+        "to count their full logical size regardless of local download state"
+    ),
+)
 def main(
     path: Path,
     max_files: int,
@@ -95,6 +104,7 @@ def main(
     debug: bool,
     interactive: bool,
     output: Path,
+    actual_size: bool,
 ) -> None:
     """Analyze disk space usage and find large files/directories.
 
@@ -108,7 +118,7 @@ def main(
     try:
         if interactive:
             # Run interactive TUI mode
-            run_textual_ui(path, max_files, max_dirs, list(skip_dirs))
+            run_textual_ui(path, max_files, max_dirs, list(skip_dirs), actual_size)
             return 0
         else:
             # Run non-interactive mode
@@ -120,7 +130,9 @@ def main(
             if skip_dirs:
                 skip_list.extend(skip_dirs)
 
-            options = ScanOptions(max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_list)
+            options = ScanOptions(
+                max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_list, actual_size=actual_size
+            )
 
             scanner = DiskScanner(options, console)
 

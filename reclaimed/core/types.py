@@ -12,6 +12,8 @@ class FileInfo(NamedTuple):
     size: int
     last_modified: float  # Timestamp (seconds since epoch)
     is_icloud: bool = False
+    is_onedrive: bool = False
+    is_complete: bool = True  # False while a directory's subtree is still being scanned
 
 
 @dataclass
@@ -44,6 +46,8 @@ class ScanOptions:
     max_dirs: int = 10
     skip_dirs: List[str] = None  # Directories to skip
     icloud_base: Optional[Path] = None  # Base path for iCloud detection
+    onedrive_base: Optional[Path] = None  # Base path for OneDrive detection
+    actual_size: bool = True  # Count on-disk bytes (True) vs. logical/apparent size (False)
 
     def __post_init__(self):
         """Set default values after initialization."""

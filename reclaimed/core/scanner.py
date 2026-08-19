@@ -23,6 +23,11 @@ from .types import FileInfo, ScanOptions, ScanProgress, ScanResult
 
 logger = logging.getLogger(__name__)
 
+# Windows FILE_ATTRIBUTE_RECALL_ON_OPEN / FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: set on
+# cloud-only placeholder files (e.g. OneDrive Files On-Demand) that have not been
+# downloaded locally.
+_WIN_RECALL_ATTRS = 0x00040000 | 0x00400000
+
 
 class DiskScanner:
     """Core scanning logic for analyzing disk usage."""
@@ -38,9 +43,14 @@ class DiskScanner:
         self.console = console or Console()
         self._cache = DirectorySizeCache()
         self._access_issues: Dict[Path, str] = {}
-        self._dir_sizes: Dict[Path, Tuple[int, bool]] = {}
+        self._dir_sizes: Dict[Path, Tuple[int, bool, bool]] = {}
         self._total_size = 0
         self._file_count = 0
+        # Directories whose entire subtree has finished scanning
+        self._completed_dirs: set = set()
+        # Number of not-yet-completed subdirectories under each directory,
+        # used to detect when a directory's subtree becomes fully scanned
+        self._pending_subdirs: Dict[Path, int] = {}
 
     async def scan_async(self, root_path: Path) -> AsyncIterator[ScanProgress]:
         """Scan a directory asynchronously, yielding progress updates.
@@ -62,6 +72,8 @@ class DiskScanner:
             # Reset scan state
             self._access_issues.clear()
             self._dir_sizes.clear()
+            self._completed_dirs.clear()
+            self._pending_subdirs.clear()
             self._total_size = 0
             self._file_count = 0
 
@@ -89,11 +101,16 @@ class DiskScanner:
                             and self.options.icloud_base in path.parents
                             or "Mobile Documents" in str(path)
                         )
+                        is_onedrive = (
+                            self.options.onedrive_base
+                            and self.options.onedrive_base in path.parents
+                            or "OneDrive" in str(path)
+                        )
                         # Include last_modified in FileInfo creation
-                        file_info = FileInfo(path, size, last_modified, is_icloud)
+                        file_info = FileInfo(path, size, last_modified, is_icloud, is_onedrive)
 
                         # Update directory sizes incrementally
-                        self._update_dir_sizes(path, size, is_icloud)
+                        self._update_dir_sizes(path, size, is_icloud, is_onedrive)
 
                         # Insert file in sorted position if it's large enough
                         if (
@@ -150,6 +167,11 @@ class DiskScanner:
                     except (PermissionError, OSError) as e:
                         self._handle_access_error(path, e)
 
+            # The walk has fully finished, so every directory is now complete
+            # (belt-and-braces in case propagation missed an edge case, e.g. a
+            # directory whose stat() failed after its children were queued)
+            self._completed_dirs.add(root_path)
+
             # Final directory size calculation
             largest_dirs = self._get_largest_dirs(root_path)
 
@@ -185,6 +207,8 @@ class DiskScanner:
             # Reset scan state
             self._access_issues.clear()
             self._dir_sizes.clear()
+            self._completed_dirs.clear()
+            self._pending_subdirs.clear()
             self._total_size = 0
             self._file_count = 0
 
@@ -201,11 +225,16 @@ class DiskScanner:
                             and self.options.icloud_base in path.parents
                             or "Mobile Documents" in str(path)
                         )
+                        is_onedrive = (
+                            self.options.onedrive_base
+                            and self.options.onedrive_base in path.parents
+                            or "OneDrive" in str(path)
+                        )
                         # Include last_modified in FileInfo creation
-                        file_info = FileInfo(path, size, last_modified, is_icloud)
+                        file_info = FileInfo(path, size, last_modified, is_icloud, is_onedrive)
 
                         # Update directory sizes incrementally
-                        self._update_dir_sizes(path, size, is_icloud)
+                        self._update_dir_sizes(path, size, is_icloud, is_onedrive)
 
                         # Add to files list
                         files.append(file_info)
@@ -216,6 +245,10 @@ class DiskScanner:
 
             # Sort files by size
             files.sort(key=lambda x: x.size, reverse=True)
+
+            # The walk has fully finished, so every directory is now complete;
+            # root_path itself is never yielded by _walk_directory, so mark it here
+            self._completed_dirs.add(root_path)
 
             # Get largest directories
             dirs = self._get_largest_dirs(root_path)
@@ -230,6 +263,65 @@ class DiskScanner:
 
         except KeyboardInterrupt:
             raise ScanInterruptedError() from None
+
+    @staticmethod
+    def _local_disk_size(stat_result: os.stat_result) -> int:
+        """Estimate bytes actually resident on local disk for a file.
+
+        Cloud-sync placeholder files (evicted iCloud/OneDrive items) report their
+        full logical size via st_size even when little or no data is stored
+        locally, so this reads the OS's actual block allocation instead. This
+        also naturally accounts for sparse and filesystem-compressed files.
+
+        Args:
+            stat_result: Result of os.stat()/DirEntry.stat() for the file
+
+        Returns:
+            Estimated number of bytes occupied on local disk
+        """
+        st_blocks = getattr(stat_result, "st_blocks", None)
+        if st_blocks is not None:
+            # POSIX: block count is always in 512-byte units
+            return st_blocks * 512
+
+        st_file_attributes = getattr(stat_result, "st_file_attributes", None)
+        if st_file_attributes is not None and st_file_attributes & _WIN_RECALL_ATTRS:
+            return 0
+
+        return stat_result.st_size
+
+    def _get_size(self, stat_result: os.stat_result) -> int:
+        """Get the file size to report, based on the configured size mode.
+
+        Args:
+            stat_result: Result of os.stat()/DirEntry.stat() for the file
+
+        Returns:
+            st_size (apparent size) or on-disk size, per self.options.actual_size
+        """
+        if self.options.actual_size:
+            return self._local_disk_size(stat_result)
+        return stat_result.st_size
+
+    def _mark_dir_complete(self, dir_path: Path) -> None:
+        """Mark a directory's subtree as fully scanned, propagating upward.
+
+        When a directory has no more pending subdirectories, its parent's
+        pending count is decremented; if that reaches zero the parent is
+        marked complete too, and so on up to the scan root.
+
+        Args:
+            dir_path: Directory whose subtree just finished scanning
+        """
+        stack = [dir_path]
+        while stack:
+            current = stack.pop()
+            self._completed_dirs.add(current)
+            parent = current.parent
+            if parent in self._pending_subdirs:
+                self._pending_subdirs[parent] -= 1
+                if self._pending_subdirs[parent] <= 0:
+                    stack.append(parent)
 
     def _should_skip_directory(self, dir_path: Path) -> bool:
         """Check if a directory should be skipped based on skip_dirs patterns.
@@ -275,6 +367,7 @@ class DiskScanner:
 
             while dirs_to_process:
                 current_dir = dirs_to_process.pop(0)
+                subdir_count = 0
 
                 try:
                     # Use os.scandir directly for better performance
@@ -289,11 +382,12 @@ class DiskScanner:
                             if entry.is_dir():
                                 if not self._should_skip_directory(Path(entry.path)):
                                     dirs_to_process.append(Path(entry.path))
+                                    subdir_count += 1
                             else:
                                 # Get file stats directly from DirEntry for better performance
                                 try:
                                     stat_result = entry.stat() # Get stat result once
-                                    size = stat_result.st_size
+                                    size = self._get_size(stat_result)
                                     last_modified = stat_result.st_mtime # Get timestamp
                                     yield Path(entry.path), True, size, last_modified # Yield timestamp
                                     processed_count += 1
@@ -314,6 +408,12 @@ class DiskScanner:
 
                 except (AccessError, OSError) as e:
                     self._handle_access_error(current_dir, e)
+
+                # Track how many subdirectories still need to finish before this
+                # directory's own subtree can be considered fully scanned
+                self._pending_subdirs[current_dir] = subdir_count
+                if subdir_count == 0:
+                    self._mark_dir_complete(current_dir)
 
                 # Yield the directory itself after processing its contents
                 try:
@@ -351,6 +451,10 @@ class DiskScanner:
                             # Recursively process subdirectory
                             yield from self._walk_directory(entry_path)
 
+                        # By this point every descendant of entry_path (at any depth)
+                        # has already been yielded above, so its subtree is complete.
+                        self._completed_dirs.add(entry_path)
+
                         # Yield directory itself with size 0 and its mtime
                         try:
                             dir_stat = entry_path.stat()
@@ -361,7 +465,7 @@ class DiskScanner:
                         # Get file stats directly from DirEntry for better performance
                         try:
                             stat_result = entry.stat() # Get stat result once
-                            size = stat_result.st_size
+                            size = self._get_size(stat_result)
                             last_modified = stat_result.st_mtime # Get timestamp
                             yield entry_path, True, size, last_modified # Yield timestamp
                         except (OSError, AttributeError) as e:
@@ -371,13 +475,16 @@ class DiskScanner:
         except (AccessError, OSError) as e:
             self._handle_access_error(path, e)
 
-    def _update_dir_sizes(self, file_path: Path, file_size: int, is_icloud: bool) -> None:
+    def _update_dir_sizes(
+        self, file_path: Path, file_size: int, is_icloud: bool, is_onedrive: bool = False
+    ) -> None:
         """Update directory sizes incrementally as files are processed.
 
         Args:
             file_path: Path to the file
             file_size: Size of the file in bytes
             is_icloud: Whether the file is in iCloud
+            is_onedrive: Whether the file is in OneDrive
         """
         # Initialize update counter if it doesn't exist
         if not hasattr(self, "_update_counter"):
@@ -386,10 +493,11 @@ class DiskScanner:
 
         # Update size for all parent directories in memory
         for parent in file_path.parents:
-            curr_size, curr_cloud = self._dir_sizes.get(parent, (0, False))
+            curr_size, curr_icloud, curr_onedrive = self._dir_sizes.get(parent, (0, False, False))
             new_size = curr_size + file_size
-            new_cloud = curr_cloud or is_icloud
-            self._dir_sizes[parent] = (new_size, new_cloud)
+            new_icloud = curr_icloud or is_icloud
+            new_onedrive = curr_onedrive or is_onedrive
+            self._dir_sizes[parent] = (new_size, new_icloud, new_onedrive)
 
         # Only update cache periodically to reduce overhead
         # For large directories, update cache less frequently
@@ -402,8 +510,8 @@ class DiskScanner:
         if self._update_counter % cache_update_frequency == 0:
             # Batch update the cache for all parent directories
             for parent in file_path.parents:
-                size, is_cloud = self._dir_sizes.get(parent, (0, False))
-                self._cache.set(parent, size, is_cloud)
+                size, is_cloud, is_od = self._dir_sizes.get(parent, (0, False, False))
+                self._cache.set(parent, size, is_cloud, is_od)
 
     def _get_largest_dirs(self, root: Path) -> List[FileInfo]:
         """Get the largest directories from the calculated sizes.
@@ -416,7 +524,7 @@ class DiskScanner:
         """
         # Convert directory sizes to FileInfo objects, fetching mtime
         dirs = []
-        for p, (s, c) in self._dir_sizes.items():
+        for p, (s, ic, od) in self._dir_sizes.items():
             # Apply the same filtering as before
             if p.is_dir() and (p == root or root in p.parents or p in root.parents):
                 try:
@@ -425,7 +533,15 @@ class DiskScanner:
                 except OSError:
                     # Default to 0.0 if stat fails
                     last_modified = 0.0
-                dirs.append(FileInfo(p, s, last_modified, c))
+                # Ancestors of root are never themselves walked (only the slice of
+                # their contents under root is counted), so their partial size is
+                # final exactly when root's own subtree finishes, not when they
+                # individually appear in _completed_dirs (which never happens)
+                if p in root.parents:
+                    is_complete = root in self._completed_dirs
+                else:
+                    is_complete = p in self._completed_dirs
+                dirs.append(FileInfo(p, s, last_modified, ic, od, is_complete))
 
         # Sort by size (largest first)
         dirs.sort(key=lambda x: x.size, reverse=True)
@@ -519,6 +635,7 @@ class DiskScanner:
                 "scanned_path": str(scanned_path.absolute()),
                 "total_size_bytes": self._total_size,
                 "total_size_human": format_size(self._total_size),
+                "size_mode": "actual" if self.options.actual_size else "apparent",
                 "files_scanned": self._file_count,
             },
             "largest_files": [
@@ -526,7 +643,7 @@ class DiskScanner:
                     "path": str(f.path.absolute()),
                     "size_bytes": f.size,
                     "size_human": format_size(f.size),
-                    "storage_type": "icloud" if f.is_icloud else "local",
+                    "storage_type": "icloud" if f.is_icloud else "onedrive" if f.is_onedrive else "local",
                 }
                 for f in files
             ],
@@ -535,7 +652,7 @@ class DiskScanner:
                     "path": str(d.path.absolute()),
                     "size_bytes": d.size,
                     "size_human": format_size(d.size),
-                    "storage_type": "icloud" if d.is_icloud else "local",
+                    "storage_type": "icloud" if d.is_icloud else "onedrive" if d.is_onedrive else "local",
                 }
                 for d in dirs
             ],

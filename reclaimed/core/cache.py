@@ -13,6 +13,7 @@ class CacheEntry:
 
     size: int
     is_icloud: bool
+    is_onedrive: bool
     timestamp: float
     valid: bool = True
 
@@ -30,14 +31,14 @@ class DirectorySizeCache:
         self._lock = RLock()  # Use RLock for better performance with recursive calls
         self._ttl = ttl
 
-    def get(self, path: Path) -> Optional[Tuple[int, bool]]:
-        """Get size and iCloud status for a directory if cached.
+    def get(self, path: Path) -> Optional[Tuple[int, bool, bool]]:
+        """Get size, iCloud status, and OneDrive status for a directory if cached.
 
         Args:
             path: Directory path to look up
 
         Returns:
-            Tuple of (size, is_icloud) if cached and valid, None otherwise
+            Tuple of (size, is_icloud, is_onedrive) if cached and valid, None otherwise
         """
         # Convert path to string for faster dictionary lookup
         path_str = str(path)
@@ -52,18 +53,19 @@ class DirectorySizeCache:
                     entry.valid = False
                     return None
 
-                return entry.size, entry.is_icloud
+                return entry.size, entry.is_icloud, entry.is_onedrive
             return None
         finally:
             self._lock.release()
 
-    def set(self, path: Path, size: int, is_icloud: bool) -> None:
-        """Cache the size and iCloud status for a directory.
+    def set(self, path: Path, size: int, is_icloud: bool, is_onedrive: bool = False) -> None:
+        """Cache the size, iCloud status, and OneDrive status for a directory.
 
         Args:
             path: Directory path to cache
             size: Total size in bytes
             is_icloud: Whether directory contains iCloud files
+            is_onedrive: Whether directory contains OneDrive files
         """
         # Convert path to string for faster dictionary operations
         path_str = str(path)
@@ -71,7 +73,7 @@ class DirectorySizeCache:
         try:
             self._lock.acquire()
             self._cache[path_str] = CacheEntry(
-                size=size, is_icloud=is_icloud, timestamp=time.time()
+                size=size, is_icloud=is_icloud, is_onedrive=is_onedrive, timestamp=time.time()
             )
         finally:
             self._lock.release()
