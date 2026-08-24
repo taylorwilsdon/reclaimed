@@ -1046,10 +1046,10 @@ class ReclaimedApp(App[None]):
 
     # Tab button handlers removed as we now have a unified view
 
-    def on_data_table_row_selected(self, event) -> None:
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection in data tables."""
         table_id = event.data_table.id
-        row = event.cursor_coordinate.row
+        row = event.cursor_row
 
         # Update current_focus based on which table was selected
         if table_id == "files-table":

@@ -85,6 +85,26 @@ def test_toolbar_sort_and_theme_actions(tmp_path: Path) -> None:
     asyncio.run(exercise_app())
 
 
+def test_selecting_table_row_uses_row_selected_event_api(tmp_path: Path) -> None:
+    """Selecting a result uses the row index exposed by Textual's event."""
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            selected = FileInfo(tmp_path / "selected.txt", 10, 1.0, False)
+            app._displayed_items["files-table"] = [selected]
+            table = app.query_one("#files-table", DataTable)
+            row_key = table.add_row("10 B", "", "100%", str(selected.path))
+
+            with patch.object(app, "notify") as notify:
+                app.on_data_table_row_selected(DataTable.RowSelected(table, 0, row_key))
+
+            assert app.current_focus == "files"
+            notify.assert_called_once_with(f"Selected: {selected.path}", timeout=3)
+
+    asyncio.run(exercise_app())
+
+
 def test_run_textual_ui() -> None:
     """The entry point constructs and runs the app."""
     with patch("reclaimed.ui.textual_app.ReclaimedApp") as mock_app:
