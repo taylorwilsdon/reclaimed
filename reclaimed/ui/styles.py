@@ -1,263 +1,350 @@
 """Shared styles for reclaimed"""
 
 # Selenized Dark color scheme hex values
-BG_0 = "#103c48"     # darkest background
-BG_1 = "#184956"     # darker background
-BG_2 = "#2d5b69"     # content highlights
-DIM_0 = "#72898f"    # dimmed text
-FG_0 = "#adbcbc"     # main text
-FG_1 = "#cad8d9"     # emphasized text
-YELLOW = "#ebc13d"   # bright yellow
-ORANGE = "#fd9456"   # bright orange
-RED = "#ff665c"      # bright red
+BG_0 = "#103c48"  # darkest background
+BG_1 = "#184956"  # darker background
+BG_2 = "#2d5b69"  # content highlights
+DIM_0 = "#72898f"  # dimmed text
+FG_0 = "#adbcbc"  # main text
+FG_1 = "#cad8d9"  # emphasized text
+YELLOW = "#ebc13d"  # bright yellow
+ORANGE = "#fd9456"  # bright orange
+RED = "#ff665c"  # bright red
 MAGENTA = "#ff84cd"  # bright magenta
-VIOLET = "#bd96fa"   # bright violet
-BLUE = "#58a3ff"     # bright blue
-CYAN = "#53d6c7"     # bright cyan
-GREEN = "#84c747"    # bright green
+VIOLET = "#bd96fa"  # bright violet
+BLUE = "#58a3ff"  # bright blue
+CYAN = "#53d6c7"  # bright cyan
+GREEN = "#84c747"  # bright green
 
 # Backward compatibility with old Solarized variable names
-BASE03 = BG_0        # darkest background
-BASE02 = BG_1        # darker background
-BASE01 = BG_2        # content highlights
-BASE00 = DIM_0       # dimmed text
-BASE0 = FG_0         # main text
-BASE1 = FG_1         # emphasized text
-BASE2 = FG_1         # light content (mapped to emphasized text in selenized)
-BASE3 = FG_1         # lightest (mapped to emphasized text in selenized)
+BASE03 = BG_0  # darkest background
+BASE02 = BG_1  # darker background
+BASE01 = BG_2  # content highlights
+BASE00 = DIM_0  # dimmed text
+BASE0 = FG_0  # main text
+BASE1 = FG_1  # emphasized text
+BASE2 = FG_1  # light content (mapped to emphasized text in selenized)
+BASE3 = FG_1  # lightest (mapped to emphasized text in selenized)
 
-# CSS styles for Textual UI
+# Theme-aware styles for the Textual UI. Every color comes from the active
+# Textual theme, so switching themes updates the complete interface.
 TEXTUAL_CSS = """
-/* Define all variables at the start */
-$bg_0: #103c48;      /* darkest background */
-$bg_1: #184956;      /* darker background */
-$bg_2: #2d5b69;      /* content highlights */
-$dim_0: #72898f;     /* dimmed text */
-$fg_0: #adbcbc;      /* main text */
-$fg_1: #cad8d9;      /* emphasized text */
-$yellow: #ebc13d;    /* bright yellow */
-$orange: #fd9456;    /* bright orange */
-$red: #ff665c;       /* bright red */
-$magenta: #ff84cd;   /* bright magenta */
-$violet: #bd96fa;    /* bright violet */
-$blue: #58a3ff;      /* bright blue */
-$cyan: #53d6c7;      /* bright cyan */
-$green: #84c747;     /* bright green */
-
-
 Screen {
-    background: $bg_0;
-    color: $fg_0;
+    background: $background;
+    color: $foreground;
 }
 
-#header {
-    dock: top;
-    height: 1;
-    background: $bg_2;
-    color: $fg_1;
-    text-align: center;
-    border-bottom: solid $fg_0;
+#app-header {
+    height: 3;
+    background: $surface;
+    color: $foreground;
+    border-bottom: heavy $primary;
 }
 
-#footer {
-    height: 1;
-    background: $bg_2;
-    color: $fg_1;
-    border-top: solid $fg_0;
+#app-header HeaderIcon {
+    width: 7;
+    padding: 0 2;
+    color: $text-primary;
+    background: $primary-muted;
+    text-style: bold;
+    content-align: center middle;
+    pointer: pointer;
 }
 
-#footer-container {
-    dock: bottom;
-    height: 2;
-    align-horizontal: left;
+#app-header HeaderIcon:hover {
+    color: $text;
+    background: $primary;
 }
 
-#scan-progress {
-    background: $bg_1;
+#app-header HeaderTitle {
+    padding: 0 2;
+    color: $foreground;
+    content-align: left middle;
+}
+
+#app-header HeaderClock {
+    width: 11;
+    padding: 0 2;
+    color: $text-primary;
+    background: $panel;
+    border-left: solid $border-blurred;
+    text-style: bold;
 }
 
 Footer {
     height: 1;
+    background: $footer-background;
+    color: $footer-foreground;
 }
 
 #main-container {
     width: 100%;
-    height: 100%;
-    border-left: heavy $bg_2;
-    border-right: heavy $bg_2;
-}
-
-#title {
-    dock: top;
-    height: 2;
-    background: $bg_2;
-    color: $fg_1;
-    text-align: center;
-    border-bottom: heavy $bg_1;
-}
-
-#status-bar {
-    dock: top;
-    height: 2;
-    background: $bg_1;
+    height: 1fr;
     padding: 0 1;
-    border-bottom: heavy $bg_2;
+    overflow: hidden;
 }
 
-#status-label {
-    width: auto;
-    color: $fg_0;
+#path-bar {
+    height: 2;
+    background: $surface;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+#scan-progress {
+    width: 3;
+    height: 2;
+    color: $primary;
+    background: transparent;
+}
+
+#scan-state {
+    width: 11;
+    height: 1;
+    margin: 0 1 0 0;
+    content-align: center middle;
+    text-style: bold;
+}
+
+#scan-state.scanning {
+    color: $text-warning;
+    background: $warning-muted;
+}
+
+#scan-state.complete {
+    color: $text-success;
+    background: $success-muted;
+}
+
+#scan-state.failed {
+    color: $text-error;
+    background: $error-muted;
 }
 
 #path-display {
     width: 1fr;
-    color: $fg_0;
-    padding: 0 1;
-}
-
-#scan-timer {
-    width: auto;
-    color: $cyan;
-    text-align: right;
-    padding-right: 2;
-}
-
-#scan-count {
-    width: auto;
-    color: $blue;
-    text-align: right;
-    padding-right: 1;
-}
-#files-section-header, #dirs-section-header {
     height: 1;
-    background: $bg_1;
-    padding-left: 1;
-    color: $fg_1;
-    margin-top: 1;
+    color: $foreground-muted;
+    text-overflow: ellipsis;
 }
 
-/* Remove dock: top to keep headers in normal flow */
-#dirs-section-header {
+#summary-strip {
+    height: 3;
     margin-top: 1;
+    background: $surface;
 }
 
-#files-table, #dirs-table {
+.metric-card {
+    width: 1fr;
+    height: 3;
+    padding: 0 1;
+    border-right: solid $border-blurred;
+}
+
+.metric-card:last-child {
+    border-right: none;
+}
+
+.metric-value {
+    height: 1;
+    color: $text-primary;
+    text-style: bold;
+}
+
+.metric-label {
+    height: 1;
+    color: $foreground-muted;
+    text-style: bold;
+}
+
+#scan-progress-bar {
+    height: 1;
+    margin: 0 1;
+}
+
+#toolbar {
+    height: 3;
+    margin-top: 1;
+    align-vertical: middle;
+}
+
+#results-title {
+    width: 1fr;
+    color: $foreground;
+    text-style: bold;
+}
+
+#sort-label {
+    width: auto;
+    margin-right: 1;
+    color: $foreground-muted;
+}
+
+#sort-select {
+    width: 32;
+    margin-right: 1;
+}
+
+#toolbar Button {
+    width: auto;
+    margin-left: 1;
+    pointer: pointer;
+}
+
+#tables-container {
     width: 100%;
-    color: $fg_0;
-    background: $bg_0;
-    border: heavy $fg_0;
+    height: 1fr;
+    layout: vertical;
 }
 
-#dirs-table {
-    height: 45%;
+.table-panel {
+    width: 100%;
+    height: 1fr;
     margin-bottom: 1;
+    background: $surface;
+    border: tall $border-blurred;
 }
 
-#files-table {
-    height: 50%;
+.table-panel:focus-within {
+    border: tall $primary;
+}
+
+.section-header {
+    height: 2;
+    padding: 0 1;
+    background: $panel;
+    content-align: left middle;
+}
+
+.section-title {
+    width: 1fr;
+    color: $foreground;
+    text-style: bold;
+}
+
+.result-count {
+    width: auto;
+    color: $foreground-muted;
 }
 
 DataTable {
+    width: 100%;
+    height: 1fr;
+    color: $foreground;
+    background: $surface;
     border: none;
+    scrollbar-size: 1 1;
 }
 
 DataTable > .datatable--header {
-    background: $bg_1;
-    color: $fg_1;
-    border-bottom: heavy $bg_2;
+    background: $panel;
+    color: $foreground;
+    text-style: bold;
+}
+
+DataTable > .datatable--even-row {
+    background: $boost;
 }
 
 DataTable > .datatable--cursor {
-    background: $bg_2;
-    color: $fg_1;
-    border: round $bg_1;
+    background: $primary-muted;
+    color: $text-primary;
+    text-style: bold;
 }
 
-#dialog-container {
-    width: 100%;
-    margin: 5;
+Screen.-wide #tables-container {
+    layout: horizontal;
+}
+
+Screen.-wide .table-panel {
+    width: 1fr;
+    height: 100%;
+    margin: 0 1 0 0;
+}
+
+Screen.-wide .table-panel:last-child {
+    margin-right: 0;
+}
+
+Screen.-narrow #results-title,
+Screen.-narrow #sort-label,
+Screen.-narrow #theme-button {
+    display: none;
+}
+
+Screen.-narrow #sort-select {
+    width: 1fr;
+}
+
+ConfirmationDialog,
+SortOptions {
+    align: center middle;
+    background: $background 75%;
+}
+
+#dialog-container,
+#sort-container {
+    width: 70;
+    max-width: 92%;
     height: auto;
-    background: $bg_1;
-    border: tall $blue;
+    background: $surface;
+    border: tall $primary;
     padding: 1 2;
 }
 
-#dialog-title {
-    width: 100%;
+.dialog-eyebrow {
     height: 1;
-    content-align: center middle;
-    color: $fg_1;
+    color: $text-primary;
+    text-style: bold;
+}
+
+#dialog-title,
+#sort-title {
+    width: 100%;
+    height: 2;
+    color: $foreground;
+    text-style: bold;
 }
 
 #dialog-path {
     width: 100%;
-    height: 2;
-    content-align: center middle;
-    margin: 1 0;
-    color: $red;
-}
-
-#dialog-buttons {
-    width: 100%;
-    height: 3;
-    content-align: center middle;
-    margin-top: 1;
-    align-horizontal: center;
-}
-
-#sort-container {
-    width: 40%;
     height: auto;
-    background: $bg_1;
-    border: tall $blue;
-    padding: 1 2;
+    max-height: 4;
+    margin: 1 0;
+    padding: 1;
+    color: $text-error;
+    background: $error-muted;
+    text-wrap: wrap;
 }
 
-#sort-title {
-    width: 100%;
-    height: 1;
-    content-align: center middle;
-    margin-bottom: 1;
-    color: $fg_1;
+.dialog-warning {
+    height: auto;
+    color: $text-warning;
 }
 
+#dialog-buttons,
 #sort-buttons {
     width: 100%;
     height: 3;
-    content-align: center middle;
     margin-top: 1;
+    align-horizontal: right;
 }
 
-Button {
-    margin: 0 1;
-    background: $bg_2;
-    color: $fg_1;
+#dialog-buttons Button,
+#sort-buttons Button {
+    width: auto;
+    margin-left: 1;
+    pointer: pointer;
 }
 
-Button:hover {
-    background: $dim_0;
-}
-
-Button.primary {
-    background: $blue;
-}
-
-Button.success {
-    background: $green;
-}
-
-Button.error {
-    background: $red;
+RadioSet {
+    width: 100%;
+    background: transparent;
 }
 
 RadioButton {
-    background: $bg_1;
-    color: $fg_1;
+    background: transparent;
+    color: $foreground;
+    pointer: pointer;
 }
-
-RadioButton.-selected {
-    background: $blue;
-    color: $fg_1;
-}
-
 """

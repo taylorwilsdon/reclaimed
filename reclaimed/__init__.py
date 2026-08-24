@@ -1,6 +1,5 @@
 """Disk space analysis and optimization tool."""
 
-from .version import __version__
 from .core import (
     AccessError,
     DiskScanner,
@@ -15,6 +14,7 @@ from .core import (
 )
 from .io import FileSystemOperations
 from .utils.formatters import format_size, parse_size
+from .version import __version__
 
 __all__ = [
     "__version__",
