@@ -191,6 +191,10 @@ Footer {
     pointer: pointer;
 }
 
+#delete-button {
+    min-width: 10;
+}
+
 #tables-container {
     width: 100%;
     height: 1fr;
@@ -315,6 +319,13 @@ SortOptions {
     color: $text-error;
     background: $error-muted;
     text-wrap: wrap;
+}
+
+#dialog-size-info {
+    height: 1;
+    margin: 0 0 1 0;
+    color: $text-success;
+    text-style: bold;
 }
 
 .dialog-warning {

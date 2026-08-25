@@ -56,9 +56,10 @@ class ProgressManager:
 class ConfirmationDialog(ModalScreen[bool]):
     """A modal dialog for confirming file/folder deletion."""
 
-    def __init__(self, item_path: Path, is_dir: bool = False):
+    def __init__(self, item_path: Path, item_size: int, is_dir: bool = False):
         super().__init__()
         self.item_path = item_path
+        self.item_size = item_size
         self.is_dir = is_dir
         self.item_type = "directory" if is_dir else "file"
 
@@ -68,6 +69,10 @@ class ConfirmationDialog(ModalScreen[bool]):
             yield Static("DELETE ITEM", classes="dialog-eyebrow")
             yield Static(f"Delete this {self.item_type}?", id="dialog-title")
             yield Static(str(self.item_path), id="dialog-path", markup=False)
+            yield Static(
+                f"This will free up {format_size(self.item_size)}.",
+                id="dialog-size-info",
+            )
 
             if self.is_dir:
                 yield Static(
@@ -267,6 +272,15 @@ class ReclaimedApp(App[None]):
                     compact=True,
                     flat=True,
                     tooltip="Cycle through Textual's built-in themes (T)",
+                )
+                yield Button(
+                    "Delete",
+                    id="delete-button",
+                    variant="error",
+                    compact=True,
+                    flat=True,
+                    disabled=True,
+                    tooltip="Delete the selected item (Delete key)",
                 )
                 yield Button(
                     "Rescan",
@@ -637,6 +651,8 @@ class ReclaimedApp(App[None]):
 
             # Update dirs table if data has changed
             self._update_table_if_changed("#dirs-table", self.largest_dirs)
+
+            self._update_delete_button()
         except Exception:
             # Tables might not be mounted yet, skip update
             pass
@@ -997,7 +1013,9 @@ class ReclaimedApp(App[None]):
             table_name = "files-table" if self.current_focus == "files" else "dirs-table"
             displayed = self._displayed_items[table_name]
             if row < len(displayed):
-                path = displayed[row].path
+                selected = displayed[row]
+                path = selected.path
+                item_size = selected.size
 
                 is_dir = path.is_dir()
 
@@ -1041,11 +1059,17 @@ class ReclaimedApp(App[None]):
                                     current_row = len(table.rows) - 1
                                 table.move_cursor(row=current_row, column=0)
 
-                            self.notify(f"Successfully deleted {path}", timeout=5)
+                            self.notify(
+                                f"Deleted {path.name}, freed {format_size(item_size)}",
+                                timeout=5,
+                            )
+                            self._update_delete_button()
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
 
-                self.push_screen(ConfirmationDialog(path, is_dir), handle_confirmation)
+                self.push_screen(
+                    ConfirmationDialog(path, item_size, is_dir), handle_confirmation
+                )
 
     def action_help(self) -> None:
         """Show help information."""
@@ -1075,6 +1099,42 @@ class ReclaimedApp(App[None]):
         self.notify(help_text, timeout=10)
 
     # Tab button handlers removed as we now have a unified view
+
+    def _update_delete_button(self) -> None:
+        """Update the delete button label and state based on the current cursor."""
+        try:
+            btn = self.query_one("#delete-button", Button)
+        except Exception:
+            return
+        table_name = "files-table" if self.current_focus == "files" else "dirs-table"
+        try:
+            table = self.query_one(f"#{table_name}")
+        except Exception:
+            btn.disabled = True
+            btn.label = "Delete"
+            return
+        displayed = self._displayed_items.get(table_name, [])
+        if table.cursor_coordinate is not None and table.cursor_coordinate.row < len(displayed):
+            item = displayed[table.cursor_coordinate.row]
+            btn.disabled = False
+            btn.label = f"Delete ({format_size(item.size)})"
+        else:
+            btn.disabled = True
+            btn.label = "Delete"
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Update delete button when the cursor moves to a new row."""
+        table_id = event.data_table.id
+        if table_id == "files-table":
+            self.current_focus = "files"
+        else:
+            self.current_focus = "dirs"
+        self._update_delete_button()
+
+    @on(Button.Pressed, "#delete-button")
+    def delete_button_pressed(self) -> None:
+        """Handle delete button click."""
+        self.action_delete_selected()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection in data tables."""
