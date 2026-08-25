@@ -1,12 +1,15 @@
-import pytest
+import asyncio
 import json
-import tempfile
+import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 from reclaimed.core.errors import InvalidPathError, ScanInterruptedError
 from reclaimed.core.scanner import DiskScanner
 from reclaimed.core.types import FileInfo, ScanOptions, ScanResult
+from reclaimed.core.walk import local_disk_size
 
 
 def test_scanner_initialization():
@@ -49,9 +52,7 @@ def test_basic_scan(sample_file_structure):
 
 def test_directory_size_calculation(sample_file_structure):
     """Test that directory sizes are calculated correctly."""
-    # Use apparent size: on-disk size rounds tiny files up to a filesystem
-    # block, which would break this test's exact byte-count assertion.
-    scanner = DiskScanner(options=ScanOptions(actual_size=False))
+    scanner = DiskScanner(ScanOptions(actual_size=False))
     result = scanner.scan(sample_file_structure)
 
     # Find dir1 in results
@@ -61,8 +62,6 @@ def test_directory_size_calculation(sample_file_structure):
 
 def test_max_files_limit(tmp_path):
     """Test that max_files limit is respected."""
-    # Use apparent size so files of different byte counts don't collapse to
-    # the same on-disk block size and defeat the size-ordering assertion.
     scanner = DiskScanner(options=ScanOptions(max_files=2, actual_size=False))
 
     # Create more files than the limit
@@ -75,21 +74,21 @@ def test_max_files_limit(tmp_path):
     assert result.files[0].size > result.files[1].size
 
 
-def test_scan_async_functionality(sample_file_structure):
-    """Test functionality that would be tested by async scan."""
-    # Instead of testing the async method directly, we'll test the
-    # synchronous scan method which uses the same underlying logic
-    scanner = DiskScanner()
-    result = scanner.scan(sample_file_structure)
+def test_scan_async_yields_progress(sample_file_structure):
+    """scan_async drives a real event loop and ends with an exact snapshot."""
 
-    # Verify the scan completed successfully
-    assert result.total_size > 0
-    assert result.files_scanned > 0
-    assert isinstance(result.files, list)
-    assert isinstance(result.directories, list)
+    async def collect():
+        scanner = DiskScanner(ScanOptions(actual_size=False))
+        return [p async for p in scanner.scan_async(sample_file_structure)]
 
-    # Verify we have the expected files
-    assert len(result.files) == 3  # We created 3 files in sample_file_structure
+    updates = asyncio.run(collect())
+
+    assert updates, "scan_async yielded nothing"
+    final = updates[-1]
+    assert final.progress == 1.0
+    assert final.scanned == 3
+    assert final.total_size == 2700
+    assert len(final.files) == 3
 
 
 def test_access_issues(mock_filesystem):
@@ -131,133 +130,113 @@ def test_icloud_detection(tmp_path):
     assert str(icloud_files[0].path).endswith("test.txt")
 
 
-def test_scan_sync_all_dirs_marked_complete(tmp_path):
-    """Test that the blocking scan() always reports every directory as complete."""
-    (tmp_path / "a" / "b").mkdir(parents=True)
-    (tmp_path / "a" / "b" / "f.txt").write_text("x" * 100)
+def test_onedrive_detection_and_directory_rollup(tmp_path):
+    """OneDrive roots are detected by path and propagated to their files."""
+    onedrive_dir = tmp_path / "OneDrive - Example"
+    onedrive_dir.mkdir()
+    onedrive_file = onedrive_dir / "cloud.bin"
+    onedrive_file.write_bytes(b"cloud")
 
-    scanner = DiskScanner()
-    result = scanner.scan(tmp_path)
+    result = DiskScanner().scan(tmp_path)
 
-    assert result.directories  # sanity check we found something
-    assert all(d.is_complete for d in result.directories)
-
-
-def test_directory_completion_tracking_mid_scan(tmp_path):
-    """Test that _walk_directory_async marks a finished subtree complete while
-    a sibling subtree that still has pending subdirectories is not."""
-    import asyncio
-
-    (tmp_path / "first").mkdir()
-    (tmp_path / "first" / "f.txt").write_text("a" * 100)
-    (tmp_path / "second" / "nested").mkdir(parents=True)
-    (tmp_path / "second" / "nested" / "g.txt").write_text("b" * 100)
-
-    scanner = DiskScanner()
-    first_dir_snapshot = {}
-
-    async def drive():
-        async for path, is_file, _size, _mtime in scanner._walk_directory_async(tmp_path):
-            if not is_file and path.name == "first" and not first_dir_snapshot:
-                first_dir_snapshot["first"] = (tmp_path / "first") in scanner._completed_dirs
-                first_dir_snapshot["second"] = (tmp_path / "second") in scanner._completed_dirs
-                first_dir_snapshot["root"] = tmp_path in scanner._completed_dirs
-
-    asyncio.run(drive())
-
-    # 'first' has no subdirectories, so it completes as soon as it's processed
-    assert first_dir_snapshot["first"] is True
-    # 'second' still has 'nested' pending at that point
-    assert first_dir_snapshot["second"] is False
-    # root can't be complete while any child subtree is still pending
-    assert first_dir_snapshot["root"] is False
-
-    # After the full walk, everything is complete
-    assert (tmp_path / "first") in scanner._completed_dirs
-    assert (tmp_path / "second") in scanner._completed_dirs
-    assert (tmp_path / "second" / "nested") in scanner._completed_dirs
-    assert tmp_path in scanner._completed_dirs
+    file_info = next(item for item in result.files if item.path == onedrive_file)
+    dir_info = next(item for item in result.directories if item.path == onedrive_dir)
+    assert file_info.is_onedrive is True
+    assert file_info.is_icloud is False
+    assert dir_info.is_onedrive is True
 
 
-def test_get_largest_dirs_ancestor_completion_tracks_root(tmp_path):
-    """Test that an ancestor of root is reported complete iff root itself is.
+def test_onedrive_name_matching_is_precise_and_case_insensitive(tmp_path):
+    """Only standard personal/business OneDrive root names are automatic."""
+    expected = {"OneDrive": True, "oNeDrIvE - Example": True, "OneDriveBackup": False}
+    for name in expected:
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "file.bin").write_bytes(b"x")
 
-    Ancestor directories (parents of the scanned root) are never walked
-    themselves -- only the slice of their contents under root contributes to
-    their size -- so they can never appear in _completed_dirs directly.
-    """
-    scanner = DiskScanner()
-    ancestor = tmp_path.parent
-    scanner._dir_sizes[tmp_path] = (100, False, False)
-    scanner._dir_sizes[ancestor] = (100, False, False)
+    result = DiskScanner(ScanOptions(actual_size=False)).scan(tmp_path)
+    detected = {item.path.parent.name: item.is_onedrive for item in result.files}
 
-    # Root not yet complete: ancestor should also show incomplete
-    dirs = scanner._get_largest_dirs(tmp_path)
-    by_path = {d.path: d for d in dirs}
-    assert by_path[tmp_path].is_complete is False
-    assert by_path[ancestor].is_complete is False
+    assert detected == expected
 
-    # Once root finishes, the ancestor's partial total is final too
-    scanner._completed_dirs.add(tmp_path)
-    dirs = scanner._get_largest_dirs(tmp_path)
-    by_path = {d.path: d for d in dirs}
-    assert by_path[tmp_path].is_complete is True
-    assert by_path[ancestor].is_complete is True
+
+def test_scan_root_inside_configured_onedrive_is_detected(tmp_path):
+    """An explicit OneDrive base also works when the scan begins below it."""
+    onedrive_base = tmp_path / "CloudFiles"
+    scan_root = onedrive_base / "Documents"
+    scan_root.mkdir(parents=True)
+    cloud_file = scan_root / "report.bin"
+    cloud_file.write_bytes(b"report")
+
+    scanner = DiskScanner(ScanOptions(onedrive_base=onedrive_base))
+    result = scanner.scan(scan_root)
+
+    assert result.files[0].is_onedrive is True
+    assert result.directories[0].is_onedrive is True
 
 
 def test_actual_size_defaults_to_true():
-    """Test that actual (on-disk) size mode is the default."""
+    """Allocated-byte accounting is the default size mode."""
     assert ScanOptions().actual_size is True
 
 
 def test_local_disk_size_posix_uses_st_blocks():
-    """Test that POSIX on-disk size is read from st_blocks, in 512-byte units."""
-    # A cloud-only placeholder: large logical size, zero blocks actually allocated
+    """POSIX allocated size uses 512-byte st_blocks units."""
     placeholder_stat = MagicMock(st_size=57_621_712, st_blocks=0)
-    assert DiskScanner._local_disk_size(placeholder_stat) == 0
-
-    # A fully-downloaded file: blocks roughly track the logical size
     downloaded_stat = MagicMock(st_size=49_310_040_471, st_blocks=96_308_680)
-    assert DiskScanner._local_disk_size(downloaded_stat) == 96_308_680 * 512
+
+    assert local_disk_size(placeholder_stat) == 0
+    assert local_disk_size(downloaded_stat) == 96_308_680 * 512
 
 
 def test_local_disk_size_windows_recall_attribute():
-    """Test the Windows fallback: FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS means cloud-only."""
-    # No st_blocks on Windows; use st_file_attributes instead
-    cloud_only_stat = MagicMock(spec=["st_size", "st_file_attributes"], st_size=1234, st_file_attributes=0x00400000)
-    assert DiskScanner._local_disk_size(cloud_only_stat) == 0
+    """Windows recall attributes identify cloud-only placeholders."""
+    cloud_only = MagicMock(
+        spec=["st_size", "st_file_attributes"],
+        st_size=1234,
+        st_file_attributes=0x00400000,
+    )
+    local = MagicMock(
+        spec=["st_size", "st_file_attributes"],
+        st_size=1234,
+        st_file_attributes=0x00000020,
+    )
 
-    local_stat = MagicMock(spec=["st_size", "st_file_attributes"], st_size=1234, st_file_attributes=0x00000020)
-    assert DiskScanner._local_disk_size(local_stat) == 1234
-
-
-def test_get_size_respects_actual_size_option():
-    """Test that DiskScanner._get_size switches between actual and apparent size."""
-    stat_result = MagicMock(st_size=1000, st_blocks=0)
-
-    actual_scanner = DiskScanner(options=ScanOptions(actual_size=True))
-    assert actual_scanner._get_size(stat_result) == 0
-
-    apparent_scanner = DiskScanner(options=ScanOptions(actual_size=False))
-    assert apparent_scanner._get_size(stat_result) == 1000
+    assert local_disk_size(cloud_only) == 0
+    assert local_disk_size(local) == 1234
 
 
-def test_onedrive_detection(tmp_path):
-    """Test OneDrive file detection."""
-    scanner = DiskScanner(options=ScanOptions(onedrive_base=tmp_path / "OneDrive"))
+def test_size_mode_is_applied_in_worker_path(tmp_path, monkeypatch):
+    """The production directory worker applies actual/apparent size policy."""
+    file_path = tmp_path / "file.bin"
+    file_path.write_bytes(b"x" * 1000)
+    monkeypatch.setattr("reclaimed.core.walk.local_disk_size", lambda _stat: 17)
 
-    # Create mock OneDrive path
-    onedrive_path = tmp_path / "OneDrive/test.txt"
-    onedrive_path.parent.mkdir(parents=True)
-    onedrive_path.write_text("onedrive test")
+    actual = DiskScanner(ScanOptions(actual_size=True, max_workers=1)).scan(tmp_path)
+    apparent = DiskScanner(ScanOptions(actual_size=False, max_workers=1)).scan(tmp_path)
 
-    result = scanner.scan(tmp_path)
+    assert actual.files[0].size == 17
+    assert actual.actual_size is True
+    assert apparent.files[0].size == 1000
+    assert apparent.actual_size is False
 
-    # Verify OneDrive file was detected
-    onedrive_files = [f for f in result.files if f.is_onedrive]
-    assert len(onedrive_files) > 0
-    assert str(onedrive_files[0].path).endswith("test.txt")
-    assert not onedrive_files[0].is_icloud
+
+def test_file_info_preserves_legacy_four_value_sequence_api(tmp_path):
+    """New metadata does not change legacy unpacking, length, or indexing."""
+    info = FileInfo(tmp_path / "file.bin", 10, 1.5, True, True, False)
+
+    path, size, modified, is_icloud = info
+
+    assert (path, size, modified, is_icloud) == (
+        info.path,
+        info.size,
+        info.last_modified,
+        info.is_icloud,
+    )
+    assert len(info) == 4
+    assert info[-1] is True
+    assert info.is_onedrive is True
+    assert info.is_complete is False
 
 
 def test_skip_dirs(mock_filesystem):
@@ -284,91 +263,180 @@ def test_scan_interruption(mock_filesystem, monkeypatch):
         scanner.scan(mock_filesystem)
 
 
-def test_insert_sorted():
-    """Test the _insert_sorted method for maintaining sorted lists."""
-    scanner = DiskScanner()
+def test_top_n_files_selection(tmp_path):
+    """Only the largest files survive, in descending order."""
+    for i in range(20):
+        (tmp_path / f"f{i}.bin").write_bytes(b"x" * (1000 + i * 10))
 
-    # Create test data
-    items = []
-    file1 = FileInfo(Path("/test/file1.txt"), 1000, False)
-    file2 = FileInfo(Path("/test/file2.txt"), 2000, False)
-    file3 = FileInfo(Path("/test/file3.txt"), 3000, False)
-    file4 = FileInfo(Path("/test/file4.txt"), 500, False)
+    result = DiskScanner(ScanOptions(max_files=5, actual_size=False)).scan(tmp_path)
 
-    # Insert items and check order
-    scanner._insert_sorted(items, file2)  # [2000]
-    assert len(items) == 1
-    assert items[0].size == 2000
-
-    scanner._insert_sorted(items, file3)  # [3000, 2000]
-    assert len(items) == 2
-    assert items[0].size == 3000
-    assert items[1].size == 2000
-
-    scanner._insert_sorted(items, file1)  # [3000, 2000, 1000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[1].size == 2000
-    assert items[2].size == 1000
-
-    scanner._insert_sorted(items, file4)  # [3000, 2000, 1000, 500]
-    assert len(items) == 4
-    assert items[0].size == 3000
-    assert items[3].size == 500
-
-    # Test with max_items limit
-    items = [file3, file2, file1]  # [3000, 2000, 1000]
-
-    # This should not be inserted (smaller than smallest item)
-    scanner._insert_sorted(items, file4, max_items=3)  # Still [3000, 2000, 1000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[2].size == 1000
-
-    # Create a file that should be inserted in the middle
-    file5 = FileInfo(Path("/test/file5.txt"), 2500, False)
-    scanner._insert_sorted(items, file5, max_items=3)  # [3000, 2500, 2000]
-    assert len(items) == 3
-    assert items[0].size == 3000
-    assert items[1].size == 2500
-    assert items[2].size == 2000
+    assert [f.size for f in result.files] == [1190, 1180, 1170, 1160, 1150]
 
 
-def test_update_dir_sizes():
-    """Test the _update_dir_sizes method."""
-    scanner = DiskScanner()
+def test_files_with_equal_sizes_do_not_break_ordering(tmp_path):
+    """Equal sizes are resolved deterministically without comparing Path objects."""
+    for name in ("a.bin", "b.bin", "c.bin"):
+        (tmp_path / name).write_bytes(b"x" * 500)
 
-    # Create a test file path with multiple parent directories
-    file_path = Path("/test/dir1/dir2/file.txt")
-    file_size = 1024
-    is_icloud = True
+    result = DiskScanner(ScanOptions(max_files=2)).scan(tmp_path)
 
-    # Update directory sizes
-    scanner._update_dir_sizes(file_path, file_size, is_icloud)
+    assert [file_info.path.name for file_info in result.files] == ["a.bin", "b.bin"]
 
-    # Check that all parent directories were updated
-    for parent in file_path.parents:
-        assert parent in scanner._dir_sizes
-        size, is_cloud, is_onedrive = scanner._dir_sizes[parent]
-        assert size == file_size
-        assert is_cloud == is_icloud
-        assert is_onedrive is False
 
-    # Add another file in the same directory
-    file_path2 = Path("/test/dir1/dir2/file2.txt")
-    file_size2 = 2048
-    is_icloud2 = False
+def test_directory_results_bounded_by_scan_root(sample_file_structure):
+    """No ancestor of the scan root may appear in the directory results.
 
-    scanner._update_dir_sizes(file_path2, file_size2, is_icloud2)
+    Regression test for the bug where every parent up to '/' accumulated the
+    full scan total and crowded the real directories out of the table.
+    """
+    root = sample_file_structure
+    result = DiskScanner().scan(root)
 
-    # Check that parent directories have accumulated sizes
-    for parent in file_path2.parents:
-        assert parent in scanner._dir_sizes
-        size, is_cloud, is_onedrive = scanner._dir_sizes[parent]
-        assert size == file_size + file_size2
-        # Once a directory contains an iCloud file, it stays marked as iCloud
-        assert is_cloud == True
-        assert is_onedrive is False
+    paths = {d.path for d in result.directories}
+    assert Path("/") not in paths
+    assert root.parent not in paths
+    assert all(p == root or root in p.parents for p in paths)
+
+    # The root's rolled-up size is the whole scan.
+    root_entry = next(d for d in result.directories if d.path == root)
+    assert root_entry.size == result.total_size
+
+
+def test_deep_tree_rollup(tmp_path):
+    """Subtree totals remain exact in a deeply nested tree."""
+    current = tmp_path
+    for name in ("a", "b", "c", "d", "e"):
+        current = current / name
+        current.mkdir()
+        (current / "f.bin").write_bytes(b"x" * 100)
+
+    result = DiskScanner(ScanOptions(max_dirs=10, actual_size=False)).scan(tmp_path)
+    sizes = {d.path.name: d.size for d in result.directories}
+
+    assert sizes["a"] == 500  # five files of 100 bytes below it
+    assert sizes["e"] == 100  # the deepest holds only its own
+    assert result.total_size == 500
+
+
+def test_sync_and_async_agree(sample_file_structure):
+    """The two entry points share one implementation, so they must not diverge."""
+    sync_result = DiskScanner().scan(sample_file_structure)
+
+    async def collect():
+        return [p async for p in DiskScanner().scan_async(sample_file_structure)]
+
+    updates = asyncio.run(collect())
+    final = updates[-1]
+
+    assert final.progress == 1.0
+    assert final.scanned == sync_result.files_scanned
+    assert final.total_size == sync_result.total_size
+    assert [f.path for f in final.files] == [f.path for f in sync_result.files]
+    assert [d.path for d in final.dirs] == [d.path for d in sync_result.directories]
+
+
+def test_threaded_matches_serial(mock_filesystem):
+    """Worker count must not change results."""
+    serial = DiskScanner(ScanOptions(max_workers=1)).scan(mock_filesystem)
+    threaded = DiskScanner(ScanOptions(max_workers=4)).scan(mock_filesystem)
+
+    assert serial.total_size == threaded.total_size
+    assert serial.files_scanned == threaded.files_scanned
+    assert [f.path for f in serial.files] == [f.path for f in threaded.files]
+    assert [d.path for d in serial.directories] == [d.path for d in threaded.directories]
+
+
+def test_symlinks_are_not_followed(tmp_path):
+    """Symlinked files and directories contribute nothing to the total."""
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / "data.bin").write_bytes(b"x" * 400)
+
+    (tmp_path / "link_to_dir").symlink_to(real_dir, target_is_directory=True)
+    (tmp_path / "link_to_file").symlink_to(real_dir / "data.bin")
+
+    result = DiskScanner(ScanOptions(actual_size=False)).scan(tmp_path)
+
+    assert result.total_size == 400
+    assert result.files_scanned == 1
+
+
+def test_mobile_documents_is_detected_without_explicit_icloud_base(tmp_path):
+    """The standard macOS iCloud marker works with default CLI options."""
+    cloud_dir = tmp_path / "Mobile Documents"
+    cloud_dir.mkdir()
+    cloud_file = cloud_dir / "cloud.bin"
+    cloud_file.write_bytes(b"cloud")
+
+    result = DiskScanner().scan(tmp_path)
+
+    file_info = next(item for item in result.files if item.path == cloud_file)
+    dir_info = next(item for item in result.directories if item.path == cloud_dir)
+    assert file_info.is_icloud is True
+    assert dir_info.is_icloud is True
+
+
+def test_directory_completion_tracks_real_subtree_work(tmp_path):
+    """A finished sibling is done while a sibling with queued work is scanning."""
+    first = tmp_path / "first"
+    first.mkdir()
+    (first / "f.txt").write_text("first")
+    second = tmp_path / "second"
+    nested = second / "nested"
+    nested.mkdir(parents=True)
+    (nested / "g.txt").write_text("second")
+
+    scanner = DiskScanner(ScanOptions(max_workers=1))
+    scanner._reset_state(tmp_path)
+    engine = scanner._engine()
+
+    root_work = next(engine)
+    child_work = engine.send(scanner._run_batch(None, root_work.jobs))
+    nested_work = engine.send(scanner._run_batch(None, child_work.jobs))
+
+    ids = {Path(path): index for index, path in enumerate(scanner._paths)}
+    assert scanner._complete[ids[first]] is True
+    assert scanner._complete[ids[second]] is False
+    assert scanner._complete[ids[tmp_path]] is False
+
+    emission = engine.send(scanner._run_batch(None, nested_work.jobs))
+    assert all(item.is_complete for item in emission.progress.dirs)
+    with pytest.raises(StopIteration):
+        engine.send(None)
+
+
+def test_completed_scan_marks_every_directory_done(tmp_path):
+    """Final synchronous results never retain a scanning status."""
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "a" / "b" / "f.txt").write_text("x")
+
+    result = DiskScanner().scan(tmp_path)
+
+    assert result.directories
+    assert all(item.is_complete for item in result.directories)
+
+
+def test_partial_results_on_interrupt(mock_filesystem, monkeypatch):
+    """An interrupted scan carries what it managed to collect."""
+    real_scandir = os.scandir
+    calls = {"n": 0}
+
+    def flaky_scandir(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise KeyboardInterrupt()
+        return real_scandir(*args, **kwargs)
+
+    monkeypatch.setattr("os.scandir", flaky_scandir)
+
+    scanner = DiskScanner(options=ScanOptions(max_workers=1))
+    with pytest.raises(ScanInterruptedError) as exc_info:
+        scanner.scan(mock_filesystem)
+
+    partial = exc_info.value.partial
+    assert partial is not None
+    assert partial is scanner.last_partial_result
+    assert isinstance(partial, ScanResult)
 
 
 def test_save_results(tmp_path):
@@ -379,7 +447,7 @@ def test_save_results(tmp_path):
     files = [
         FileInfo(Path("/test/file1.txt"), 1000, 1234567890.0, False),
         FileInfo(Path("/test/file2.txt"), 2000, 1234567891.0, True),
-        FileInfo(Path("/test/file3.txt"), 1500, 1234567894.0, False, True)
+        FileInfo(Path("/test/file3.txt"), 1500, 1234567894.0, False, True),
     ]
 
     dirs = [
@@ -426,11 +494,41 @@ def test_save_results(tmp_path):
     assert results["largest_files"][1]["size_bytes"] == 2000
     assert results["largest_files"][1]["storage_type"] == "icloud"
     assert results["largest_files"][2]["storage_type"] == "onedrive"
+    assert results["scan_info"]["size_mode"] == "actual"
 
     # Check directory details
     assert results["largest_directories"][0]["size_bytes"] == 3000
     assert results["largest_directories"][1]["size_bytes"] == 4000
     assert results["largest_directories"][1]["storage_type"] == "icloud"
+
+
+def test_save_scan_result_ignores_mutated_scanner_state(tmp_path):
+    """Snapshot exports remain coherent after interactive state changes."""
+    scanner = DiskScanner(ScanOptions(actual_size=True))
+    snapshot = ScanResult(
+        files=[FileInfo(tmp_path / "file.bin", 25, 0.0, False)],
+        directories=[FileInfo(tmp_path, 25, 0.0, False)],
+        total_size=25,
+        files_scanned=1,
+        access_issues={tmp_path / "blocked": "Permission denied"},
+        actual_size=False,
+    )
+    scanner._total_size = 999
+    scanner._file_count = 999
+    scanner._access_issues = {}
+    scanner.console = MagicMock()
+    output_path = tmp_path / "snapshot.json"
+
+    scanner.save_scan_result(output_path, snapshot, tmp_path)
+
+    with open(output_path, encoding="utf-8") as output_file:
+        saved = json.load(output_file)
+    assert saved["scan_info"]["total_size_bytes"] == 25
+    assert saved["scan_info"]["files_scanned"] == 1
+    assert saved["scan_info"]["size_mode"] == "apparent"
+    assert saved["access_issues"] == [
+        {"path": str(tmp_path / "blocked"), "error": "Permission denied"}
+    ]
 
 
 def test_scan_async_exists():

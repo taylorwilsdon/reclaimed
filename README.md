@@ -1,194 +1,137 @@
-# reclaimed ♻️
-
 <p align="center">
-  <img src="https://img.shields.io/github/license/taylorwilsdon/reclaimed?style=flat&logo=github&logoColor=white&label=License&labelColor=555&color=blue" alt="License" />
-  <a href="https://github.com/taylorwilsdon">
-    <img src="https://img.shields.io/badge/Privacy-100%25_Client--Side_Processing-blue?style=flat&logo=shield&logoColor=white&labelColor=555" alt="Privacy Shield" />
-  </a>
-  <img src="https://img.shields.io/pypi/v/reclaimed?style=flat&logo=pypi&logoColor=white&label=Version&labelColor=005da7&color=blue" alt="PyPI Version" />
-  <a href="https://pepy.tech/projects/reclaimed"><img src="https://static.pepy.tech/badge/reclaimed" alt="PyPI Downloads"></a>
+  <img src="https://raw.githubusercontent.com/taylorwilsdon/reclaimed/main/reclaimed-social-transparent.png" alt="Reclaimed — disk space management" width="100%">
 </p>
 
-<div align="center">
- <img width="50%" src="https://github.com/user-attachments/assets/7f02903b-24ca-4415-a929-5a8f89caa99d" />
-</div>
+<p align="center">
+  Fast, local disk-usage analysis with a responsive terminal interface.
+</p>
 
----
+<p align="center">
+  <a href="https://pypi.org/project/reclaimed/"><img src="https://img.shields.io/pypi/v/reclaimed?style=flat-square&label=PyPI" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/reclaimed/"><img src="https://img.shields.io/pypi/pyversions/reclaimed?style=flat-square" alt="Supported Python versions"></a>
+  <a href="https://pepy.tech/project/reclaimed"><img src="https://static.pepy.tech/badge/reclaimed" alt="PyPI downloads"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/taylorwilsdon/reclaimed?style=flat-square" alt="MIT license"></a>
+</p>
 
-**reclaimed** is a cross-platform, ultra-lightweight, and surprisingly powerful command-line tool for analyzing disk usage — with special handling for iCloud storage on macOS.  
-Quickly find your largest files and directories with a beautiful, color-coded interface, and manage them through an interactive terminal UI.  
-Fully supports **Linux**, **macOS**, and **Windows**.
+Reclaimed recursively scans a directory, calculates its largest files and directory trees, and presents the results in either an interactive [Textual](https://textual.textualize.io/) application or compact [Rich](https://rich.readthedocs.io/) tables. It runs entirely on your machine, makes no network requests, and includes no telemetry.
 
----
+| Scanner | Interactive UI | Output |
+|:--|:--|:--|
+| Bounded top-file tracking, exact recursive directory totals, 1–8 directory-listing workers | Responsive side-by-side or stacked tables, live scan and per-directory status, keyboard and mouse control | Proportional size bars, iCloud/OneDrive detection, local JSON export |
+| Ignores symlinks and skips common trash/system directories by default | Sort, hide, rescan, switch themes, or permanently delete with confirmation | Partial results are retained when a text-mode scan is interrupted |
 
-### A quick plug for AI-Enhanced Docs
+Reclaimed supports Python 3.9+ on macOS, Linux, and Windows.
 
-> **This README was crafted with AI assistance, and here's why that matters**
-> 
-> As a solo developer building open source tools that may only ever serve my own needs, comprehensive documentation often wouldn't happen without AI help. Using agentic dev tools like **Roo** & **Claude Code** that understand the entire codebase, AI doesn't just regurgitate generic content - it extracts real implementation details and creates accurate, specific documentation.
->
-> In this case, Sonnet 4 took a pass & a human (me) verified them 6/28/25.
+## Install
 
----
+| Run without installing | Install with pip | Install with Homebrew on macOS |
+|:--|:--|:--|
+| `uvx reclaimed` | `python -m pip install reclaimed` | `brew install taylorwilsdon/tap/reclaimed` |
 
-## ✨ Features
+To work from a clone instead:
 
-- 🚀 **Legitimately Performant**: Fast recursive directory scanning with ultra-efficient progress updates.
-  - Carefully tuned repaint frequency — optimized to avoid slowing results by even 5ms.
-  - Separate thread for the clock to keep real-time updates buttery smooth.
-- ☁️ **iCloud Aware**: Detects and handles iCloud Drive symlink files vs local storage (macOS).
-- 📊 **Beautiful UI**: Powered by [Textualize/rich](https://github.com/Textualize/rich) and [Textualize/textual](https://github.com/Textualize/textual).
-  - Full keyboard navigation, mouse support, and customizable themes.
-- 🖥️ **Interactive Terminal UI**: Browse, manage, and delete files/directories with ease.
-- 🗑️ **Safe Deletion**: Remove large files and directories directly from the interface — with confirmation prompts.
-- 💾 **Export to JSON**: Save scan results for further analysis or batch operations.
-- ⚡ **Real-Time Feedback**: Live progress indicators and graceful handling of permission issues.
-- 🛡️ **Actual Privacy**: 100% offline. No telemetry, no analytics, no tracking - can't even check for updates.
-
----
-
-https://github.com/user-attachments/assets/1aae04e7-3201-414d-a1e3-6ea5d55bd691
-
----
-
-## 📦 Installation
-
-### Prerequisites
-- Python 3.8+
-- pip (Python package installer)
-- (Optional but recommended) Use a virtual environment
-
-### uvx (fastest)
-```bash
-uvx reclaimed
-```
-
-### Install via pip
-```bash
-pip install reclaimed
-```
-
-### Install via Homebrew (macOS)
-```bash
-brew install taylorwilsdon/tap/reclaimed
-```
-
-### Build from Source
 ```bash
 git clone https://github.com/taylorwilsdon/reclaimed.git
 cd reclaimed
-pip install -e .
+python -m pip install -e .
 ```
 
----
+## Use
 
-## 🚀 Usage
+Interactive mode is the default. Pass a directory, or omit `PATH` to scan the current directory.
 
-### Basic
 ```bash
+# Open the interactive interface
 reclaimed ~/Documents
-```
 
-### Advanced
-```bash
-# Show more results
-reclaimed ~/Documents --files 20 --dirs 15
+# Print Rich tables and exit
+reclaimed ~/Documents --no-interactive
 
-# Skip specific directories during scanning
-reclaimed ~/Documents --skip-dirs node_modules --skip-dirs __pycache__
+# Keep more results and use all eight workers
+reclaimed ~/Documents --files 25 --dirs 20 --jobs 8
 
-# Save results to JSON
+# Add directory names to the default skip list
+reclaimed ~/Documents -s node_modules -s __pycache__
+
+# Count logical file sizes instead of bytes currently allocated on disk
+reclaimed ~/Documents --apparent-size
+
+# Export the retained results and scan metadata
 reclaimed ~/Documents --output results.json
 ```
 
-### Options
-| Option | Description |
-|:------|:------------|
-| `PATH` | Directory to scan (default: current directory) |
-| `-f, --max-files N` | Number of largest files to show (default: 10) |
-| `-d, --max-dirs N` | Number of largest directories to show (default: 10) |
-| `-s, --skip-dirs DIR` | Additional directories to skip (can be specified multiple times) |
-| `-o, --output FILE` | Save results to a JSON file |
-| `-i, --interactive` | Launch the interactive Textual UI |
+When `--output` is used with the interactive interface, the JSON file is written after the app exits. In text mode, pressing <kbd>Ctrl</kbd>+<kbd>C</kbd> prints and optionally exports the partial results collected so far.
 
----
+### Command-line reference
 
-## 🎛️ Interactive Mode
+| Argument or option | Purpose |
+|:--|:--|
+| `PATH` | Directory to scan; defaults to the current directory |
+| `-f, --max-files, --files N` | Keep the `N` largest files; default `10`, minimum `0` |
+| `-d, --max-dirs, --dirs N` | Keep the `N` largest directories; default `10`, minimum `0` |
+| `-j, --jobs N` | Directory-listing workers; default `4`, range `1–8` |
+| `--actual-size / --apparent-size` | Count allocated on-disk bytes (default) or logical file sizes |
+| `-s, --skip-dirs NAME` | Skip an additional directory name; repeat for multiple names |
+| `-i, --interactive / --no-interactive` | Select the Textual interface or one-shot Rich output |
+| `-o, --output FILE` | Write scan metadata, retained results, and access issues to JSON |
+| `--debug` | Enable debug logging |
+| `--version` | Print the installed version and exit |
 
-Interactive mode is on by default. Non-interactive mode (minimal output) can be forced with:
+`.Trash` and `System Volume Information` are always included in the skip list. Additional `--skip-dirs` values are matched by directory name.
 
-```bash
-reclaimed ~/Documents --no-interactive
+## Interactive interface
+
+The interface updates while the scan runs and adapts to the terminal width: result panels sit side by side in wide terminals and stack in compact terminals. Each result shows its size, share of the scanned total, and path. Directories show whether their full subtree is still scanning or done, and a storage column appears when iCloud or OneDrive content is found.
+
+The summary strip tracks discovered size, file count, elapsed time, and hidden items. Hiding a directory only removes it and its descendants from the current view. Deletion removes the selected item from disk and always requires confirmation.
+
+| Key | Action | Key | Action |
+|:--:|:--|:--:|:--|
+| <kbd>F</kbd> | Focus files | <kbd>D</kbd> | Focus directories |
+| <kbd>Tab</kbd> | Switch result table | <kbd>S</kbd> | Open sort control |
+| <kbd>H</kbd> | Hide selected directory | <kbd>U</kbd> | Restore hidden directories |
+| <kbd>Delete</kbd> | Delete selected item | <kbd>R</kbd> | Rescan |
+| <kbd>T</kbd> | Cycle theme | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Open command palette |
+| <kbd>?</kbd> | Show help | <kbd>Q</kbd> | Quit |
+
+Results can be sorted by size, modification time, name, or path. The built-in theme cycle includes Solarized Dark, Nord, Rose Pine Moon, Catppuccin Mocha, Atom One Dark, and Textual Light.
+
+## Text output and JSON
+
+Text mode prints the same largest-file and largest-directory sets without starting the full-screen interface. Tables use relative, end-preserving paths, proportional bars, percentages, and an iCloud/OneDrive/local storage column only when relevant. Permission and other access failures are summarized after the results instead of aborting the scan.
+
+JSON exports contain:
+
+- Scan timestamp, root path, size mode, total bytes, formatted total, and number of files scanned
+- Largest files and directories with absolute paths, byte and formatted sizes, and storage type
+- Paths that could not be read and their error messages
+
+## Python API
+
+The scanner can also be embedded. Cloud roots named `Mobile Documents`, `OneDrive`, or `OneDrive - Organization` are detected automatically; explicit base paths are also supported:
+
+```python
+from pathlib import Path
+
+from reclaimed import DiskScanner, ScanOptions
+
+options = ScanOptions(
+    max_files=25,
+    max_dirs=20,
+    max_workers=4,
+    icloud_base=Path.home() / "Library" / "Mobile Documents",
+    onedrive_base=Path.home() / "OneDrive",
+    actual_size=True,
+)
+result = DiskScanner(options).scan(Path.home())
 ```
 
-### Keyboard Shortcuts
-| Key | Action | | Key | Action |
-|-----|--------|-|-----|--------|
-| `F` | Files view | | `Delete` | Remove item |
-| `D` | Directories view | | `R` | Refresh scan |
-| `S` | Sort items | | `Q` | Quit |
-| `H` | Hide directory | | `U` | Unhide all directories |
+`scan_async()` yields progress snapshots while directory listings run off the event loop. An interrupted synchronous scan raises `ScanInterruptedError` with the collected `ScanResult` available as `error.partial`.
 
----
+## Contributing
 
-## 📊 Output
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow and [pyproject.toml](./pyproject.toml) for supported Python versions, dependencies, and tool configuration.
 
-### CLI Mode
-- Real-time progress indicator (files scanned, total size)
-- Tables of largest files and directories
-- iCloud vs local storage clearly indicated
-- Summary of any access issues
+## License
 
-### Interactive Mode
-- Tabbed interface: switch between Files and Directories
-- Keyboard navigation (arrow keys) and mouse support
-- Sort items by size, name, or path
-- Delete files/directories with confirmation
-- Refresh scan results
-
----
-
-## 🛠️ Development
-
-This project uses [UV](https://github.com/astral-sh/uv) for building/publishing and [Hatch](https://hatch.pypa.io/) for workflow management.
-
-### Setup Development Environment
-```bash
-pip install -r requirements.txt
-hatch shell
-```
-
-### Common Commands
-```bash
-# Run tests
-hatch test
-
-# Build distribution packages
-uv build --sdist --wheel
-
-# Create a new release
-./release.sh
-
-# Run interactively
-python -m reclaimed /path/to/scan
-```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome!  
-Please see the [Contributing Guide](CONTRIBUTING.md) for details.
-
----
-
-## 📜 License
-
-This project is licensed under the **MIT License**.  
-See the [LICENSE](LICENSE) file for full details.
-
----
-
-<p align="center">
-  <sub>Built with ❤️ for those who love clean disks and clean code.</sub>
-</p>
+Reclaimed is available under the [MIT License](./LICENSE).

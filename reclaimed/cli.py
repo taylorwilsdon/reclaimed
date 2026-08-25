@@ -3,6 +3,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Optional, Tuple
 
 import click
 from rich.console import Console
@@ -13,13 +14,16 @@ from .core.types import ScanOptions
 from .ui.formatters import TableFormatter
 from .ui.textual_app import run_textual_ui
 from .utils.formatters import format_size
+from .version import __version__
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def handle_scan_error(error: Exception, console: Console) -> int:
+def handle_scan_error(
+    error: Exception, console: Console, root_path: Optional[Path] = None
+) -> int:
     """Handle scanning errors with appropriate messages.
 
     Args:
@@ -34,6 +38,19 @@ def handle_scan_error(error: Exception, console: Console) -> int:
         return 1
     elif isinstance(error, ScanInterruptedError):
         console.print("\n[yellow]Scan interrupted.[/] Showing partial results...")
+        if error.partial is not None and root_path is not None:
+            formatter = TableFormatter(console)
+            formatter.print_scan_summary(
+                error.partial.files,
+                error.partial.directories,
+                root_path,
+                error.partial.access_issues,
+                error.partial.total_size,
+            )
+            console.print(
+                f"\nScanned [cyan]{error.partial.files_scanned:,}[/] files, "
+                f"total size: [cyan]{format_size(error.partial.total_size)}[/]"
+            )
         return 0
     elif isinstance(error, AccessError):
         console.print(f"[red]Access error:[/] {error}")
@@ -48,6 +65,7 @@ def handle_scan_error(error: Exception, console: Console) -> int:
 
 
 @click.command()
+@click.version_option(__version__)
 @click.argument(
     "path",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
@@ -55,14 +73,18 @@ def handle_scan_error(error: Exception, console: Console) -> int:
 )
 @click.option(
     "--max-files",
+    "--files",
     "-f",
+    type=click.IntRange(min=0),
     default=10,
     help="Maximum number of largest files to show",
     show_default=True,
 )
 @click.option(
     "--max-dirs",
+    "--dirs",
     "-d",
+    type=click.IntRange(min=0),
     default=10,
     help="Maximum number of largest directories to show",
     show_default=True,
@@ -88,22 +110,30 @@ def handle_scan_error(error: Exception, console: Console) -> int:
     help="Path to save the JSON scan results",
 )
 @click.option(
+    "--jobs",
+    "-j",
+    type=click.IntRange(1, 8),
+    default=4,
+    help="Concurrent directory-listing workers",
+    show_default=True,
+)
+@click.option(
     "--actual-size/--apparent-size",
     default=True,
     help=(
-        "Count on-disk bytes for cloud-sync files (default) so files not yet "
-        "downloaded from iCloud/OneDrive show as ~0 bytes, or --apparent-size "
-        "to count their full logical size regardless of local download state"
+        "Count bytes allocated on disk (default), or count full logical file "
+        "sizes even when cloud files are not downloaded"
     ),
 )
 def main(
     path: Path,
     max_files: int,
     max_dirs: int,
-    skip_dirs: tuple[str, ...],
+    skip_dirs: Tuple[str, ...],
     debug: bool,
     interactive: bool,
-    output: Path,
+    output: Optional[Path],
+    jobs: int,
     actual_size: bool,
 ) -> None:
     """Analyze disk space usage and find large files/directories.
@@ -115,23 +145,33 @@ def main(
     if debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    console = Console()
+    scanner: Optional[DiskScanner] = None
+
     try:
         if interactive:
             # Run interactive TUI mode
-            run_textual_ui(path, max_files, max_dirs, list(skip_dirs), actual_size)
-            return 0
+            run_textual_ui(
+                path,
+                max_files,
+                max_dirs,
+                list(skip_dirs),
+                max_workers=jobs,
+                output_path=output,
+                actual_size=actual_size,
+            )
+            return
         else:
             # Run non-interactive mode
-            console = Console()
             formatter = TableFormatter(console)
 
             # Configure scanner
-            skip_list = [".Trash", "System Volume Information"]
-            if skip_dirs:
-                skip_list.extend(skip_dirs)
-
             options = ScanOptions(
-                max_files=max_files, max_dirs=max_dirs, skip_dirs=skip_list, actual_size=actual_size
+                max_files=max_files,
+                max_dirs=max_dirs,
+                skip_dirs=list(skip_dirs),
+                max_workers=jobs,
+                actual_size=actual_size,
             )
 
             scanner = DiskScanner(options, console)
@@ -141,7 +181,11 @@ def main(
 
             # Display results
             formatter.print_scan_summary(
-                result.files, result.directories, path, result.access_issues
+                result.files,
+                result.directories,
+                path,
+                result.access_issues,
+                result.total_size,
             )
 
             # Show final stats
@@ -152,13 +196,22 @@ def main(
 
             # Save results if output path is specified
             if output:
-                scanner.save_results(output, result.files, result.directories, path)
+                scanner.save_scan_result(output, result, path)
 
-            return 0
+            return
 
     except Exception as e:
-        console = Console()
-        sys.exit(handle_scan_error(e, console))
+        if (
+            output is not None
+            and scanner is not None
+            and isinstance(e, ScanInterruptedError)
+            and e.partial is not None
+        ):
+            try:
+                scanner.save_scan_result(output, e.partial, path)
+            except DiskScannerError as save_error:
+                sys.exit(handle_scan_error(save_error, console, path))
+        sys.exit(handle_scan_error(e, console, path))
 
 
 if __name__ == "__main__":
