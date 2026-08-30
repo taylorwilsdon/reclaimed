@@ -17,6 +17,22 @@ from typing import FrozenSet, List, NamedTuple, Optional, Tuple
 #: Directory name that marks the root of iCloud Drive storage on macOS.
 MOBILE_DOCUMENTS = "Mobile Documents"
 
+#: Absolute paths whose entire subtree is a kernel-backed virtual filesystem.
+#: The entries under them report sizes that have nothing to do with disk usage
+#: -- ``/proc/kcore`` alone stat()s at ~128 TiB on x86-64 -- so the scanner
+#: neither counts those files nor recurses into these trees. Empty off POSIX,
+#: where none of these paths exist.
+VIRTUAL_FS_ROOTS: FrozenSet[str] = (
+    frozenset({"/proc", "/sys", "/dev"}) if os.name == "posix" else frozenset()
+)
+
+
+def _under_virtual_fs(abs_path: str, roots: FrozenSet[str]) -> bool:
+    """True if ``abs_path`` is one of ``roots`` or lives beneath one."""
+    return any(
+        abs_path == root or abs_path.startswith(root + os.sep) for root in roots
+    )
+
 
 class WalkJob(NamedTuple):
     """One directory queued for listing."""
@@ -49,18 +65,20 @@ class WalkContext:
     "fix" this with a lock; the contention would cost more than it saves.
     """
 
-    __slots__ = ("skip", "max_files", "floor", "cancel")
+    __slots__ = ("skip", "max_files", "floor", "cancel", "virtual_roots")
 
     def __init__(
         self,
         skip: FrozenSet[str],
         max_files: int,
         cancel: threading.Event,
+        virtual_roots: FrozenSet[str] = VIRTUAL_FS_ROOTS,
     ):
         self.skip = skip
         self.max_files = max_files
         self.floor = -1
         self.cancel = cancel
+        self.virtual_roots = virtual_roots
 
 
 def list_dir(job: WalkJob, ctx: WalkContext) -> DirListing:
@@ -77,6 +95,11 @@ def list_dir(job: WalkJob, ctx: WalkContext) -> DirListing:
     own_bytes = 0
     file_count = 0
     skip = ctx.skip
+    virtual_roots = ctx.virtual_roots
+    # Resolve the listing root once so /proc, /sys and /dev can be recognised
+    # regardless of how the scan was invoked; skipped entirely off POSIX.
+    base = os.path.abspath(job.path) if virtual_roots else job.path
+    parent_virtual = bool(virtual_roots) and _under_virtual_fs(base, virtual_roots)
 
     try:
         with os.scandir(job.path) as entries:
@@ -87,10 +110,19 @@ def list_dir(job: WalkJob, ctx: WalkContext) -> DirListing:
                     # is_dir/is_symlink are answered from the directory entry's
                     # d_type where the filesystem supplies it, costing no syscall.
                     if entry.is_dir(follow_symlinks=False):
-                        if entry.name not in skip:
-                            subdirs.append((entry.name, entry.path))
+                        if entry.name in skip:
+                            continue
+                        if virtual_roots and _under_virtual_fs(
+                            os.path.join(base, entry.name), virtual_roots
+                        ):
+                            continue
+                        subdirs.append((entry.name, entry.path))
                         continue
                     if entry.is_symlink():
+                        continue
+                    # Files inside a virtual filesystem (e.g. /proc/kcore) carry
+                    # sizes unrelated to disk usage; don't count or rank them.
+                    if parent_virtual:
                         continue
 
                     stat_result = entry.stat(follow_symlinks=False)
