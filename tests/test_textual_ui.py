@@ -4,9 +4,9 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from textual.widgets import DataTable, Select
+from textual.widgets import Button, DataTable, Select, Static
 
-from reclaimed.core.types import FileInfo, ScanOptions, ScanResult
+from reclaimed.core.types import FileInfo, ScanOptions, ScanProgress, ScanResult
 from reclaimed.ui.textual_app import ReclaimedApp, ReclaimedHeader, run_textual_ui
 
 
@@ -50,6 +50,8 @@ def test_modern_dashboard_mounts_and_responds(tmp_path: Path) -> None:
             assert len(tables) == 2
             assert all(table.cursor_type == "row" for table in tables)
             assert all(table.zebra_stripes for table in tables)
+            dirs_table = app.query_one("#dirs-table", DataTable)
+            assert [column.label.plain for column in dirs_table.columns.values()][0] == "Status"
 
             await pilot.resize_terminal(70, 30)
             await pilot.pause()
@@ -85,6 +87,51 @@ def test_toolbar_sort_and_theme_actions(tmp_path: Path) -> None:
     asyncio.run(exercise_app())
 
 
+def test_pause_freezes_the_running_scan(tmp_path: Path) -> None:
+    """Pausing halts traversal and the clock; resuming continues the same scan."""
+    yielded = 0
+
+    async def endless_scan(_root: Path):
+        nonlocal yielded
+        while True:
+            yielded += 1
+            yield ScanProgress(progress=0.5, files=[], dirs=[], scanned=yielded, total_size=0)
+            await asyncio.sleep(0.02)
+
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            with patch.object(app.scanner, "scan_async", endless_scan):
+                app.scan_directory()
+                await pilot.pause(0.2)
+
+                button = app.query_one("#pause-button", Button)
+                assert not button.disabled
+
+                app.action_toggle_pause()
+                await pilot.pause(0.1)
+                assert app.scan_paused
+                assert str(button.label) == "Resume"
+                assert app.query_one("#scan-state", Static).has_class("paused")
+
+                halted_at, elapsed = yielded, app._scan_elapsed()
+                await asyncio.sleep(0.2)
+                assert yielded == halted_at  # traversal is frozen
+                assert app._scan_elapsed() == elapsed  # and so is the timer
+                assert app.scan_task.is_running  # but the scan is still alive
+
+                app.action_toggle_pause()
+                await pilot.pause(0.2)
+                assert not app.scan_paused
+                assert str(button.label) == "Pause"
+                assert yielded > halted_at
+
+                app.scan_task.cancel()
+
+    asyncio.run(exercise_app())
+
+
 def test_selecting_table_row_uses_row_selected_event_api(tmp_path: Path) -> None:
     """Selecting a result uses the row index exposed by Textual's event."""
     async def exercise_app() -> None:
@@ -115,6 +162,27 @@ def test_run_textual_ui() -> None:
 
         assert mock_app.called
         assert mock_app_instance.run.called
+
+
+def test_directory_row_shows_completion_and_onedrive(tmp_path: Path) -> None:
+    """Directory rows expose both live subtree status and OneDrive storage."""
+
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            directory = FileInfo(tmp_path / "OneDrive", 10, 0.0, False, True, False)
+            app.largest_dirs = [directory]
+            app._last_table_items.clear()
+            app.update_tables()
+            await pilot.pause()
+
+            table = app.query_one("#dirs-table", DataTable)
+            row = table.get_row(str(directory.path))
+            assert row[0].plain == "… Scanning"
+            assert any(getattr(cell, "plain", cell) == "☁ OneDrive" for cell in row)
+
+    asyncio.run(exercise_app())
 
 
 def test_interactive_export_uses_completed_snapshot(tmp_path: Path) -> None:

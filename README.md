@@ -17,7 +17,7 @@ Reclaimed recursively scans a directory, calculates its largest files and direct
 
 | Scanner | Interactive UI | Output |
 |:--|:--|:--|
-| Bounded top-file tracking, exact recursive directory totals, 1–8 directory-listing workers | Responsive side-by-side or stacked tables, live scan metrics, keyboard and mouse control | Proportional size bars, access-issue reporting, local JSON export |
+| Bounded top-file tracking, exact recursive directory totals, 1–8 directory-listing workers | Responsive side-by-side or stacked tables, live scan and per-directory status, keyboard and mouse control | Proportional size bars, iCloud/OneDrive detection, local JSON export |
 | Ignores symlinks and skips common trash/system directories by default | Sort, hide, rescan, switch themes, or permanently delete with confirmation | Partial results are retained when a text-mode scan is interrupted |
 
 Reclaimed supports Python 3.9+ on macOS, Linux, and Windows.
@@ -53,6 +53,9 @@ reclaimed ~/Documents --files 25 --dirs 20 --jobs 8
 # Add directory names to the default skip list
 reclaimed ~/Documents -s node_modules -s __pycache__
 
+# Count logical file sizes instead of bytes currently allocated on disk
+reclaimed ~/Documents --apparent-size
+
 # Export the retained results and scan metadata
 reclaimed ~/Documents --output results.json
 ```
@@ -67,6 +70,7 @@ When `--output` is used with the interactive interface, the JSON file is written
 | `-f, --max-files, --files N` | Keep the `N` largest files; default `10`, minimum `0` |
 | `-d, --max-dirs, --dirs N` | Keep the `N` largest directories; default `10`, minimum `0` |
 | `-j, --jobs N` | Directory-listing workers; default `4`, range `1–8` |
+| `--actual-size / --apparent-size` | Count allocated on-disk bytes (default) or logical file sizes |
 | `-s, --skip-dirs NAME` | Skip an additional directory name; repeat for multiple names |
 | `-i, --interactive / --no-interactive` | Select the Textual interface or one-shot Rich output |
 | `-o, --output FILE` | Write scan metadata, retained results, and access issues to JSON |
@@ -77,7 +81,7 @@ When `--output` is used with the interactive interface, the JSON file is written
 
 ## Interactive interface
 
-The interface updates while the scan runs and adapts to the terminal width: result panels sit side by side in wide terminals and stack in compact terminals. Each result shows its size, share of the scanned total, and path; a storage column appears when a scan is configured to identify iCloud content.
+The interface updates while the scan runs and adapts to the terminal width: result panels sit side by side in wide terminals and stack in compact terminals. Each result shows its size, share of the scanned total, and path. Directories show whether their full subtree is still scanning or done, and a storage column appears when iCloud or OneDrive content is found.
 
 The summary strip tracks discovered size, file count, elapsed time, and hidden items. Hiding a directory only removes it and its descendants from the current view. Deletion removes the selected item from disk and always requires confirmation.
 
@@ -94,17 +98,17 @@ Results can be sorted by size, modification time, name, or path. The built-in th
 
 ## Text output and JSON
 
-Text mode prints the same largest-file and largest-directory sets without starting the full-screen interface. Tables use relative, end-preserving paths, proportional bars, percentages, and an iCloud/local storage column only when relevant. Permission and other access failures are summarized after the results instead of aborting the scan.
+Text mode prints the same largest-file and largest-directory sets without starting the full-screen interface. Tables use relative, end-preserving paths, proportional bars, percentages, and an iCloud/OneDrive/local storage column only when relevant. Permission and other access failures are summarized after the results instead of aborting the scan.
 
 JSON exports contain:
 
-- Scan timestamp, root path, total bytes, formatted total, and number of files scanned
+- Scan timestamp, root path, size mode, total bytes, formatted total, and number of files scanned
 - Largest files and directories with absolute paths, byte and formatted sizes, and storage type
 - Paths that could not be read and their error messages
 
 ## Python API
 
-The scanner can also be embedded. On macOS, set `icloud_base` to classify results inside the iCloud Drive tree:
+The scanner can also be embedded. Cloud roots named `Mobile Documents`, `OneDrive`, or `OneDrive - Organization` are detected automatically; explicit base paths are also supported:
 
 ```python
 from pathlib import Path
@@ -116,6 +120,8 @@ options = ScanOptions(
     max_dirs=20,
     max_workers=4,
     icloud_base=Path.home() / "Library" / "Mobile Documents",
+    onedrive_base=Path.home() / "OneDrive",
+    actual_size=True,
 )
 result = DiskScanner(options).scan(Path.home())
 ```

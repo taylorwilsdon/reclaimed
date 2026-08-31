@@ -39,7 +39,14 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..utils.formatters import format_size
 from .errors import DiskScannerError, InvalidPathError, ScanInterruptedError
 from .types import FileInfo, ScanOptions, ScanProgress, ScanResult
-from .walk import MOBILE_DOCUMENTS, DirListing, WalkContext, WalkJob, list_chunk
+from .walk import (
+    MOBILE_DOCUMENTS,
+    DirListing,
+    WalkContext,
+    WalkJob,
+    is_onedrive_root_name,
+    list_chunk,
+)
 
 #: Seconds between progress emissions. The Textual UI throttles further.
 EMIT_INTERVAL = 1.0
@@ -253,8 +260,9 @@ class DiskScanner:
             self._access_issues[Path(path)] = message
 
         is_icloud = self._icloud[dir_id]
+        is_onedrive = self._onedrive[dir_id]
         for size, path, mtime in listing.candidates:
-            self._offer_file(size, path, mtime, is_icloud)
+            self._offer_file(size, path, mtime, is_icloud, is_onedrive)
 
         for name, path in listing.subdirs:
             child_icloud = is_icloud or (
@@ -265,18 +273,39 @@ class DiskScanner:
                     and os.path.realpath(path) == self._icloud_base
                 )
             )
-            frontier.append(self._new_dir(path, dir_id, child_icloud))
+            child_onedrive = is_onedrive or is_onedrive_root_name(name) or (
+                self._onedrive_base is not None
+                and name.casefold() == os.path.basename(self._onedrive_base).casefold()
+                and os.path.normcase(os.path.realpath(path)) == self._onedrive_base
+            )
+            frontier.append(self._new_dir(path, dir_id, child_icloud, child_onedrive))
 
-    def _new_dir(self, path: str, parent: int, is_icloud: bool) -> int:
+        self._pending_children[dir_id] = len(listing.subdirs)
+        if not listing.subdirs:
+            self._mark_dir_complete(dir_id)
+
+    def _new_dir(
+        self, path: str, parent: int, is_icloud: bool, is_onedrive: bool
+    ) -> int:
         """Register a directory and return its dense id."""
         dir_id = len(self._paths)
         self._paths.append(path)
         self._parent.append(parent)
         self._own.append(0)
         self._icloud.append(is_icloud)
+        self._onedrive.append(is_onedrive)
+        self._pending_children.append(0)
+        self._complete.append(False)
         return dir_id
 
-    def _offer_file(self, size: int, path: str, mtime: float, is_icloud: bool) -> None:
+    def _offer_file(
+        self,
+        size: int,
+        path: str,
+        mtime: float,
+        is_icloud: bool,
+        is_onedrive: bool,
+    ) -> None:
         """Offer a file to the bounded top-N heap.
 
         The tuple carries ``path`` second so that equal sizes are broken by a
@@ -288,11 +317,11 @@ class DiskScanner:
             return
         heap = self._file_heap
         if len(heap) < limit:
-            heapq.heappush(heap, (size, path, mtime, is_icloud))
+            heapq.heappush(heap, (size, path, mtime, is_icloud, is_onedrive))
             if len(heap) == limit:
                 self._ctx.floor = heap[0][0]
         elif size > heap[0][0]:
-            heapq.heapreplace(heap, (size, path, mtime, is_icloud))
+            heapq.heapreplace(heap, (size, path, mtime, is_icloud, is_onedrive))
             self._ctx.floor = heap[0][0]
         elif size == heap[0][0]:
             # For equal sizes keep the lexicographically smallest paths. The
@@ -301,10 +330,22 @@ class DiskScanner:
             tied = [index for index, item in enumerate(heap) if item[0] == size]
             worst = max(tied, key=lambda index: heap[index][1])
             if path < heap[worst][1]:
-                heap[worst] = (size, path, mtime, is_icloud)
+                heap[worst] = (size, path, mtime, is_icloud, is_onedrive)
                 heapq.heapify(heap)
 
-    def _rollup(self) -> Tuple[List[int], List[bool]]:
+    def _mark_dir_complete(self, dir_id: int) -> None:
+        """Mark a finished subtree complete and propagate to its ancestors."""
+        while dir_id >= 0 and not self._complete[dir_id]:
+            self._complete[dir_id] = True
+            parent = self._parent[dir_id]
+            if parent < 0:
+                break
+            self._pending_children[parent] -= 1
+            if self._pending_children[parent] > 0:
+                break
+            dir_id = parent
+
+    def _rollup(self) -> Tuple[List[int], List[bool], List[bool]]:
         """Compute exact subtree totals for every directory.
 
         One reverse pass over the arrays. Valid because a directory is always
@@ -312,37 +353,43 @@ class DiskScanner:
         """
         totals = list(self._own)
         icloud = list(self._icloud)
+        onedrive = list(self._onedrive)
         parent = self._parent
         for index in range(len(totals) - 1, 0, -1):
             ancestor = parent[index]
             totals[ancestor] += totals[index]
             if icloud[index]:
                 icloud[ancestor] = True
-        return totals, icloud
+            if onedrive[index]:
+                onedrive[ancestor] = True
+        return totals, icloud, onedrive
 
     # ------------------------------------------------------------------
     # Result assembly
     # ------------------------------------------------------------------
 
     def _build_result(self) -> ScanResult:
-        totals, icloud = self._rollup()
+        totals, icloud, onedrive = self._rollup()
         return ScanResult(
             files=self._top_files(),
-            directories=self._top_dirs(totals, icloud),
+            directories=self._top_dirs(totals, icloud, onedrive),
             total_size=self._total_size,
             files_scanned=self._file_count,
             access_issues=dict(self._access_issues),
+            actual_size=self.options.actual_size,
         )
 
     def _top_files(self) -> List[FileInfo]:
         """Largest files, biggest first, ties broken by path for determinism."""
         ordered = sorted(self._file_heap, key=lambda item: (-item[0], item[1]))
         return [
-            FileInfo(Path(path), size, mtime, is_icloud)
-            for size, path, mtime, is_icloud in ordered
+            FileInfo(Path(path), size, mtime, is_icloud, is_onedrive)
+            for size, path, mtime, is_icloud, is_onedrive in ordered
         ]
 
-    def _top_dirs(self, totals: List[int], icloud: List[bool]) -> List[FileInfo]:
+    def _top_dirs(
+        self, totals: List[int], icloud: List[bool], onedrive: List[bool]
+    ) -> List[FileInfo]:
         """Largest directories, biggest first.
 
         ``nlargest`` is O(dirs) with a small constant and runs once, replacing a
@@ -354,7 +401,15 @@ class DiskScanner:
             max(0, self.options.max_dirs), range(len(totals)), key=totals.__getitem__
         )
         return [
-            FileInfo(Path(self._paths[i]), totals[i], self._dir_mtime(i), icloud[i]) for i in ids
+            FileInfo(
+                Path(self._paths[i]),
+                totals[i],
+                self._dir_mtime(i),
+                icloud[i],
+                onedrive[i],
+                self._complete[i],
+            )
+            for i in ids
         ]
 
     def _live_progress(self) -> ScanProgress:
@@ -364,12 +419,19 @@ class DiskScanner:
         directory whose subtree has not yet been walked simply under-reports
         and grows as the scan proceeds.
         """
-        totals, icloud = self._rollup()
+        totals, icloud, onedrive = self._rollup()
         ids = heapq.nlargest(
             max(0, self.options.max_dirs), range(len(totals)), key=totals.__getitem__
         )
         dirs = [
-            FileInfo(Path(self._paths[i]), totals[i], 0.0, icloud[i])
+            FileInfo(
+                Path(self._paths[i]),
+                totals[i],
+                0.0,
+                icloud[i],
+                onedrive[i],
+                self._complete[i],
+            )
             for i in ids
         ]
         return ScanProgress(
@@ -470,7 +532,10 @@ class DiskScanner:
         self._parent: List[int] = []
         self._own: List[int] = []
         self._icloud: List[bool] = []
-        self._file_heap: List[Tuple[int, str, float, bool]] = []
+        self._onedrive: List[bool] = []
+        self._pending_children: List[int] = []
+        self._complete: List[bool] = []
+        self._file_heap: List[Tuple[int, str, float, bool, bool]] = []
         self._mtime_cache: Dict[int, float] = {}
         self._access_issues = {}
         self._total_size = 0
@@ -483,9 +548,15 @@ class DiskScanner:
             if self.options.icloud_base is not None
             else None
         )
+        self._onedrive_base = (
+            os.path.normcase(os.path.realpath(os.fspath(self.options.onedrive_base)))
+            if self.options.onedrive_base is not None
+            else None
+        )
         self._ctx = WalkContext(
             skip=frozenset(self.options.skip_dirs or ()),
             max_files=self.options.max_files,
+            actual_size=self.options.actual_size,
             cancel=self._cancel,
         )
 
@@ -503,7 +574,19 @@ class DiskScanner:
                     or comparable_root.startswith(self._icloud_base + os.sep)
                 )
             )
-            self._frontier.append(self._new_dir(root, -1, root_icloud))
+            comparable_onedrive_root = os.path.normcase(comparable_root)
+            root_onedrive = any(
+                is_onedrive_root_name(part) for part in Path(comparable_root).parts
+            ) or (
+                self._onedrive_base is not None
+                and (
+                    comparable_onedrive_root == self._onedrive_base
+                    or comparable_onedrive_root.startswith(self._onedrive_base + os.sep)
+                )
+            )
+            self._frontier.append(
+                self._new_dir(root, -1, root_icloud, root_onedrive)
+            )
 
     # ------------------------------------------------------------------
     # Output
@@ -526,6 +609,7 @@ class DiskScanner:
             total_size=self._total_size,
             files_scanned=self._file_count,
             access_issues=dict(self._access_issues),
+            actual_size=self.options.actual_size,
         )
         self.save_scan_result(output_path, result, scanned_path)
 
@@ -546,6 +630,7 @@ class DiskScanner:
                 "scanned_path": str(scanned_path.absolute()),
                 "total_size_bytes": result.total_size,
                 "total_size_human": format_size(result.total_size),
+                "size_mode": "actual" if result.actual_size else "apparent",
                 "files_scanned": result.files_scanned,
             },
             "largest_files": [
@@ -553,7 +638,13 @@ class DiskScanner:
                     "path": str(f.path.absolute()),
                     "size_bytes": f.size,
                     "size_human": format_size(f.size),
-                    "storage_type": "icloud" if f.is_icloud else "local",
+                    "storage_type": (
+                        "icloud"
+                        if f.is_icloud
+                        else "onedrive"
+                        if f.is_onedrive
+                        else "local"
+                    ),
                 }
                 for f in result.files
             ],
@@ -562,7 +653,13 @@ class DiskScanner:
                     "path": str(d.path.absolute()),
                     "size_bytes": d.size,
                     "size_human": format_size(d.size),
-                    "storage_type": "icloud" if d.is_icloud else "local",
+                    "storage_type": (
+                        "icloud"
+                        if d.is_icloud
+                        else "onedrive"
+                        if d.is_onedrive
+                        else "local"
+                    ),
                 }
                 for d in result.directories
             ],

@@ -10,7 +10,7 @@ from rich.text import Text
 
 from ..core.types import FileInfo
 from ..utils.formatters import format_bar, format_size
-from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, YELLOW
+from .styles import BASE0, BASE1, BLUE, CYAN, GREEN, VIOLET, YELLOW
 
 
 def format_display_path(path: Path, root_path: Path, max_width: int) -> str:
@@ -49,6 +49,15 @@ class TableFormatter:
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
 
+    @staticmethod
+    def _storage_cell(item: FileInfo) -> Text:
+        """Format the item's local or cloud-sync storage classification."""
+        if item.is_icloud:
+            return Text("☁ iCloud", style=BLUE)
+        if item.is_onedrive:
+            return Text("☁ OneDrive", style=VIOLET)
+        return Text("Local", style=GREEN)
+
     def _format_usage_table(
         self,
         title: str,
@@ -57,7 +66,7 @@ class TableFormatter:
         root_path: Path,
         total_size: Optional[int],
     ) -> Table:
-        show_storage = any(item.is_icloud for item in items)
+        show_storage = any(item.is_icloud or item.is_onedrive for item in items)
         table = Table(
             title=f"[{BASE1}]{title}[/]",
             border_style=border_style,
@@ -81,7 +90,7 @@ class TableFormatter:
         )
         if show_storage:
             table.add_column(
-                "Storage", style=YELLOW, no_wrap=True, width=8, max_width=8
+                "Storage", style=YELLOW, no_wrap=True, width=10, max_width=10
             )
         table.add_column("Path", style=BASE0, no_wrap=True, overflow="ellipsis")
 
@@ -90,7 +99,7 @@ class TableFormatter:
         )
         # Leave two cells of safety for Rich's borders and column separators so
         # it never adds a second tail ellipsis after our middle truncation.
-        reserved_width = 60 if show_storage else 50
+        reserved_width = 62 if show_storage else 50
         path_width = max(12, self.console.width - reserved_width)
 
         for item in items:
@@ -101,8 +110,7 @@ class TableFormatter:
                 format_percentage(fraction),
             ]
             if show_storage:
-                storage = "☁ iCloud" if item.is_icloud else "Local"
-                row.append(Text(storage, style=BLUE if item.is_icloud else GREEN))
+                row.append(self._storage_cell(item))
             row.append(format_display_path(item.path, root_path, path_width))
             table.add_row(*row)
 

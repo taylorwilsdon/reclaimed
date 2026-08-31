@@ -39,6 +39,7 @@ def test_documented_limit_aliases_and_jobs(tmp_path: Path) -> None:
                 "4",
                 "--jobs",
                 "2",
+                "--apparent-size",
             ],
         )
 
@@ -46,6 +47,7 @@ def test_documented_limit_aliases_and_jobs(tmp_path: Path) -> None:
     assert captured["options"].max_files == 3
     assert captured["options"].max_dirs == 4
     assert captured["options"].max_workers == 2
+    assert captured["options"].actual_size is False
 
 
 def test_interactive_output_is_forwarded_for_post_tui_export(tmp_path: Path) -> None:
@@ -56,3 +58,11 @@ def test_interactive_output_is_forwarded_for_post_tui_export(tmp_path: Path) -> 
 
     assert result.exit_code == 0, result.output
     assert run_ui.call_args.kwargs["output_path"] == output
+
+
+def test_interactive_size_mode_is_forwarded(tmp_path: Path) -> None:
+    with patch("reclaimed.cli.run_textual_ui") as run_ui:
+        result = CliRunner().invoke(main, [str(tmp_path), "--apparent-size"])
+
+    assert result.exit_code == 0, result.output
+    assert run_ui.call_args.kwargs["actual_size"] is False

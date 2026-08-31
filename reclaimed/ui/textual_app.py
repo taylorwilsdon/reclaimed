@@ -56,9 +56,10 @@ class ProgressManager:
 class ConfirmationDialog(ModalScreen[bool]):
     """A modal dialog for confirming file/folder deletion."""
 
-    def __init__(self, item_path: Path, is_dir: bool = False):
+    def __init__(self, item_path: Path, item_size: int, is_dir: bool = False):
         super().__init__()
         self.item_path = item_path
+        self.item_size = item_size
         self.is_dir = is_dir
         self.item_type = "directory" if is_dir else "file"
 
@@ -68,6 +69,10 @@ class ConfirmationDialog(ModalScreen[bool]):
             yield Static("DELETE ITEM", classes="dialog-eyebrow")
             yield Static(f"Delete this {self.item_type}?", id="dialog-title")
             yield Static(str(self.item_path), id="dialog-path", markup=False)
+            yield Static(
+                f"This will free up {format_size(self.item_size)}.",
+                id="dialog-size-info",
+            )
 
             if self.is_dir:
                 yield Static(
@@ -157,6 +162,7 @@ class ReclaimedApp(App[None]):
         Binding("tab", "toggle_focus", group=NAVIGATION),
         Binding("s", "sort", group=RESULTS),
         Binding("r", "refresh", group=RESULTS),
+        Binding("p", "toggle_pause", group=RESULTS),
         Binding("h", "hide_selected", group=RESULTS),
         Binding("u", "show_hidden", group=RESULTS),
         Binding("delete", "delete_selected", group=RESULTS),
@@ -174,11 +180,8 @@ class ReclaimedApp(App[None]):
         "textual-light",
     )
 
-    # Table column indices - keep these constants in sync with add_columns calls
-    COL_SIZE = 0
-    COL_BAR = 1
-    COL_PERCENT = 2
-    COL_PATH = 3
+    # The path remains the final column even when status/storage columns appear.
+    COL_PATH = -1
 
     def __init__(
         self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
@@ -209,6 +212,13 @@ class ReclaimedApp(App[None]):
             "dirs-table": [],
         }
         self._table_storage_state = {"files-table": False, "dirs-table": False}
+        self.scan_task: Optional[Worker] = None
+        self.scan_paused = False
+        # Created per scan, inside the event loop, so the worker can await it.
+        self._resume_gate: Optional[asyncio.Event] = None
+        self._paused_total = 0.0  # Seconds spent paused during the current scan
+        self._paused_at: Optional[float] = None
+        self._indicator_refresh: Optional[float] = None  # Dots rate, kept across a pause
         self.theme = self.THEMES[0]
 
     def compose(self) -> ComposeResult:
@@ -272,6 +282,24 @@ class ReclaimedApp(App[None]):
                     tooltip="Cycle through Textual's built-in themes (T)",
                 )
                 yield Button(
+                    "Delete",
+                    id="delete-button",
+                    variant="error",
+                    compact=True,
+                    flat=True,
+                    disabled=True,
+                    tooltip="Delete the selected item (Delete key)",
+                )
+                yield Button(
+                    "Pause",
+                    id="pause-button",
+                    action="app.toggle_pause",
+                    compact=True,
+                    flat=True,
+                    disabled=True,
+                    tooltip="Freeze the scan without losing progress (P)",
+                )
+                yield Button(
                     "Rescan",
                     id="refresh-button",
                     variant="primary",
@@ -293,7 +321,11 @@ class ReclaimedApp(App[None]):
                         fixed_columns=1,
                     )
                     dirs_table.add_columns(
-                        ("Size", "size"), ("Bar", "bar"), ("%", "percent"), ("Path", "path")
+                        ("Status", "status"),
+                        ("Size", "size"),
+                        ("Bar", "bar"),
+                        ("%", "percent"),
+                        ("Path", "path"),
                     )
                     yield dirs_table
 
@@ -332,10 +364,67 @@ class ReclaimedApp(App[None]):
         status.update_classes(
             {
                 "scanning": state == "scanning",
+                "paused": state == "paused",
                 "complete": state == "ready",
                 "failed": state == "failed",
             }
         )
+
+    def _scan_elapsed(self) -> float:
+        """Seconds the current scan has actually spent working, ignoring pauses."""
+        now = time.monotonic()
+        elapsed = now - self.start_time - self._paused_total
+        if self._paused_at is not None:
+            elapsed -= now - self._paused_at
+        return elapsed
+
+    def _set_pause_button(self, label: str, *, disabled: bool = False) -> None:
+        """Keep the toolbar pause control in sync with the scan state."""
+        try:
+            button = self.query_one("#pause-button", Button)
+        except Exception:
+            # Toolbar might not be mounted yet, or is being torn down.
+            return
+        button.label = label
+        button.disabled = disabled
+
+    def _set_dots_animated(self, animated: bool) -> None:
+        """Run or freeze the scanning dots so they match the scan itself."""
+        try:
+            indicator = self.query_one("#scan-progress", LoadingIndicator)
+        except Exception:
+            # Indicator might not be mounted yet, or is being torn down.
+            return
+        if animated:
+            indicator.auto_refresh = self._indicator_refresh
+        else:
+            self._indicator_refresh = indicator.auto_refresh
+            indicator.auto_refresh = None
+
+    def action_toggle_pause(self) -> None:
+        """Freeze the running scan in place, or let it carry on."""
+        if self._resume_gate is None or self.scan_task is None:
+            return
+        if not self.scan_task.is_running:
+            return
+
+        self.scan_paused = not self.scan_paused
+        if self.scan_paused:
+            self._paused_at = time.monotonic()
+            self._resume_gate.clear()
+            self._set_scan_state("paused")
+            self._set_pause_button("Resume")
+            self._set_dots_animated(False)
+            self.notify("Scan paused", timeout=2)
+        else:
+            if self._paused_at is not None:
+                self._paused_total += time.monotonic() - self._paused_at
+                self._paused_at = None
+            self._resume_gate.set()
+            self._set_scan_state("scanning")
+            self._set_pause_button("Pause")
+            self._set_dots_animated(True)
+            self.notify("Scan resumed", timeout=2)
 
     def _update_scan_metrics(
         self, scanned: int, total_size: int, progress: Optional[float] = None
@@ -364,6 +453,14 @@ class ReclaimedApp(App[None]):
 
         # Start timing with monotonic clock
         self.start_time = time.monotonic()
+
+        # A fresh scan always starts unpaused, with an open gate for the worker.
+        self.scan_paused = False
+        self._paused_total = 0.0
+        self._paused_at = None
+        self._resume_gate = asyncio.Event()
+        self._resume_gate.set()
+        self._set_pause_button("Pause", disabled=False)
 
         # Notify user that scan is starting
         self.notify("Starting directory scan...", timeout=2)
@@ -419,11 +516,9 @@ class ReclaimedApp(App[None]):
 
         # Create independent timer task
         async def update_timer():
-            start = time.monotonic()
             while True:
                 try:
-                    elapsed = time.monotonic() - start
-                    minutes, seconds = divmod(int(elapsed), 60)
+                    minutes, seconds = divmod(int(self._scan_elapsed()), 60)
                     timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
                 except Exception:
                     # Timer display might have been removed, stop updating
@@ -475,7 +570,7 @@ class ReclaimedApp(App[None]):
 
                 # Check if it's time to update tables
                 current_time = time.monotonic()
-                if current_time - last_ui_update > ui_update_interval:
+                if self.scan_paused or current_time - last_ui_update > ui_update_interval:
                     self.largest_files = files_buffer
                     self.largest_dirs = dirs_buffer
                     self.apply_sort(self.sort_method)
@@ -483,6 +578,11 @@ class ReclaimedApp(App[None]):
                     last_ui_update = current_time
                     last_file_count = progress.scanned
                     await asyncio.sleep(0)
+
+                # Suspend here while paused. The scan generator stays parked on
+                # its last yield, so no traversal happens until the gate opens.
+                if self._resume_gate is not None:
+                    await self._resume_gate.wait()
 
         except Exception as e:
             self.notify(f"Scan error: {str(e)}", severity="error")
@@ -583,12 +683,15 @@ class ReclaimedApp(App[None]):
                     total_size=completed.total_size,
                     files_scanned=completed.files_scanned,
                     access_issues=dict(completed.access_issues),
+                    actual_size=completed.actual_size,
                 )
 
             # Get elapsed time for notification
-            elapsed = time.monotonic() - self.start_time
+            elapsed = self._scan_elapsed()
 
             # Update the final dashboard state.
+            self.scan_paused = False
+            self._set_pause_button("Pause", disabled=True)
             try:
                 self._set_scan_state("ready")
                 self._update_scan_metrics(file_count, self.scanner._total_size, 1.0)
@@ -618,6 +721,8 @@ class ReclaimedApp(App[None]):
             # Hide loading indicator
             if loading:
                 loading.styles.display = "none"
+            self.scan_paused = False
+            self._set_pause_button("Pause", disabled=True)
             self._set_scan_state("failed")
             self.notify("Scan failed!", severity="error")
 
@@ -635,6 +740,8 @@ class ReclaimedApp(App[None]):
 
             # Update dirs table if data has changed
             self._update_table_if_changed("#dirs-table", self.largest_dirs)
+
+            self._update_delete_button()
         except Exception:
             # Tables might not be mounted yet, skip update
             pass
@@ -649,7 +756,10 @@ class ReclaimedApp(App[None]):
         filtered_items = [item for item in items if not self._is_hidden(item.path)]
         current_items = self._last_table_items.get(table_id, [])
         table_name = table_id.lstrip("#")
-        show_storage = any(item.is_icloud for item in self.largest_files + self.largest_dirs)
+        show_storage = any(
+            item.is_icloud or item.is_onedrive
+            for item in self.largest_files + self.largest_dirs
+        )
         if (
             current_items == filtered_items
             and self._table_storage_state[table_name] == show_storage
@@ -679,10 +789,16 @@ class ReclaimedApp(App[None]):
         table.can_focus = True
 
         table_name = table_id.lstrip("#")
-        show_storage = any(item.is_icloud for item in self.largest_files + self.largest_dirs)
+        show_storage = any(
+            item.is_icloud or item.is_onedrive
+            for item in self.largest_files + self.largest_dirs
+        )
         if self._table_storage_state[table_name] != show_storage:
             table.clear(columns=True)
-            columns = [("Size", "size"), ("Bar", "bar"), ("%", "percent")]
+            columns = []
+            if table_name == "dirs-table":
+                columns.append(("Status", "status"))
+            columns.extend([("Size", "size"), ("Bar", "bar"), ("%", "percent")])
             if show_storage:
                 columns.append(("Storage", "storage"))
             columns.append(("Path", "path"))
@@ -714,18 +830,35 @@ class ReclaimedApp(App[None]):
         fraction = item_info.size / total_size if total_size else 0.0
         width = table.size.width or (self.size.width if hasattr(self, "size") else 80)
         show_storage = self._table_storage_state[table.id]
-        path_width = max(12, width - (53 if show_storage else 41))
+        show_status = table.id == "dirs-table"
+        reserved_width = 53 if show_storage else 41
+        if show_status:
+            reserved_width += 13
+        path_width = max(12, width - reserved_width)
         theme = self.current_theme
 
-        row = [
+        row = []
+        if show_status:
+            row.append(
+                Text(
+                    "✓ Done" if item_info.is_complete else "… Scanning",
+                    style=theme.success if item_info.is_complete else theme.warning,
+                )
+            )
+        row.extend([
             format_size(item_info.size),
             Text(format_bar(fraction, 20), style=theme.secondary),
             format_percentage(fraction),
-        ]
+        ])
         if show_storage:
-            storage_status = "☁ iCloud" if item_info.is_icloud else "Local"
+            if item_info.is_icloud:
+                storage_status, storage_style = "☁ iCloud", theme.primary
+            elif item_info.is_onedrive:
+                storage_status, storage_style = "☁ OneDrive", theme.secondary
+            else:
+                storage_status, storage_style = "Local", theme.success
             row.append(
-                Text(storage_status, style=theme.primary if item_info.is_icloud else theme.success)
+                Text(storage_status, style=storage_style)
             )
         row.append(format_display_path(item_info.path, self.path, path_width))
         table.add_row(*row, key=str(item_info.path))
@@ -874,6 +1007,8 @@ class ReclaimedApp(App[None]):
                         size=new_size,
                         last_modified=dir_info.last_modified,
                         is_icloud=dir_info.is_icloud,
+                        is_onedrive=dir_info.is_onedrive,
+                        is_complete=dir_info.is_complete,
                     )
                     updated_dirs.append(updated_dir)
                 else:
@@ -967,7 +1102,9 @@ class ReclaimedApp(App[None]):
             table_name = "files-table" if self.current_focus == "files" else "dirs-table"
             displayed = self._displayed_items[table_name]
             if row < len(displayed):
-                path = displayed[row].path
+                selected = displayed[row]
+                path = selected.path
+                item_size = selected.size
 
                 is_dir = path.is_dir()
 
@@ -1011,11 +1148,17 @@ class ReclaimedApp(App[None]):
                                     current_row = len(table.rows) - 1
                                 table.move_cursor(row=current_row, column=0)
 
-                            self.notify(f"Successfully deleted {path}", timeout=5)
+                            self.notify(
+                                f"Deleted {path.name}, freed {format_size(item_size)}",
+                                timeout=5,
+                            )
+                            self._update_delete_button()
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
 
-                self.push_screen(ConfirmationDialog(path, is_dir), handle_confirmation)
+                self.push_screen(
+                    ConfirmationDialog(path, item_size, is_dir), handle_confirmation
+                )
 
     def action_help(self) -> None:
         """Show help information."""
@@ -1034,6 +1177,7 @@ class ReclaimedApp(App[None]):
         - H: Hide selected directory (dirs only)
         - U: Unhide all directories
         - R: Refresh scan (clears hidden dirs)
+        - P: Pause or resume the running scan
         - T: Cycle theme
         - Ctrl+P: Open command palette and choose any theme
         - Q: Quit application
@@ -1045,6 +1189,42 @@ class ReclaimedApp(App[None]):
         self.notify(help_text, timeout=10)
 
     # Tab button handlers removed as we now have a unified view
+
+    def _update_delete_button(self) -> None:
+        """Update the delete button label and state based on the current cursor."""
+        try:
+            btn = self.query_one("#delete-button", Button)
+        except Exception:
+            return
+        table_name = "files-table" if self.current_focus == "files" else "dirs-table"
+        try:
+            table = self.query_one(f"#{table_name}")
+        except Exception:
+            btn.disabled = True
+            btn.label = "Delete"
+            return
+        displayed = self._displayed_items.get(table_name, [])
+        if table.cursor_coordinate is not None and table.cursor_coordinate.row < len(displayed):
+            item = displayed[table.cursor_coordinate.row]
+            btn.disabled = False
+            btn.label = f"Delete ({format_size(item.size)})"
+        else:
+            btn.disabled = True
+            btn.label = "Delete"
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Update delete button when the cursor moves to a new row."""
+        table_id = event.data_table.id
+        if table_id == "files-table":
+            self.current_focus = "files"
+        else:
+            self.current_focus = "dirs"
+        self._update_delete_button()
+
+    @on(Button.Pressed, "#delete-button")
+    def delete_button_pressed(self) -> None:
+        """Handle delete button click."""
+        self.action_delete_selected()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection in data tables."""
@@ -1090,6 +1270,7 @@ def run_textual_ui(
     skip_dirs: Optional[List[str]] = None,
     max_workers: Optional[int] = None,
     output_path: Optional[Path] = None,
+    actual_size: bool = True,
 ) -> None:
     """Run the Textual UI application.
 
@@ -1100,12 +1281,14 @@ def run_textual_ui(
         skip_dirs: List of directory names to skip
         max_workers: Concurrent directory-listing workers.
         output_path: Optional JSON destination written after the TUI exits.
+        actual_size: Count allocated bytes instead of logical file sizes.
     """
     options = ScanOptions(
         max_files=max_files,
         max_dirs=max_dirs,
         skip_dirs=skip_dirs,
         max_workers=max_workers,
+        actual_size=actual_size,
     )
 
     app = ReclaimedApp(path, options)

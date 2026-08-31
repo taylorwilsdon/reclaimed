@@ -2,20 +2,40 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 #: Directories skipped by default. Single source of truth: the CLI and the
 #: Textual UI both defer to ScanOptions rather than repeating this list.
 DEFAULT_SKIP_DIRS: Tuple[str, ...] = (".Trash", "System Volume Information")
 
 
-class FileInfo(NamedTuple):
-    """Store file information in an immutable structure."""
+@dataclass(frozen=True)
+class FileInfo:
+    """Immutable file information with a legacy four-value sequence view.
+
+    ``is_onedrive`` and ``is_complete`` are metadata rather than sequence
+    fields, so callers written for the original four-field ``NamedTuple`` can
+    continue to unpack and index instances without a compatibility break.
+    """
 
     path: Path
     size: int
     last_modified: float  # Timestamp (seconds since epoch)
     is_icloud: bool = False
+    is_onedrive: bool = False
+    is_complete: bool = True  # False while a directory subtree is still scanning
+
+    def _legacy_values(self) -> Tuple[object, ...]:
+        return (self.path, self.size, self.last_modified, self.is_icloud)
+
+    def __iter__(self) -> Iterator[object]:
+        return iter(self._legacy_values())
+
+    def __len__(self) -> int:
+        return 4
+
+    def __getitem__(self, index: Union[int, slice]) -> object:
+        return self._legacy_values()[index]
 
 
 @dataclass
@@ -38,6 +58,7 @@ class ScanResult:
     total_size: int
     files_scanned: int
     access_issues: Dict[Path, str]
+    actual_size: bool = True
 
 
 @dataclass
@@ -48,6 +69,8 @@ class ScanOptions:
     max_dirs: int = 10
     skip_dirs: Optional[List[str]] = None  # Additional directories to skip
     icloud_base: Optional[Path] = None  # Base path for iCloud detection
+    onedrive_base: Optional[Path] = None  # Base path for OneDrive detection
+    actual_size: bool = True  # Count allocated bytes instead of logical bytes
     max_workers: Optional[int] = None  # None -> min(4, cpu_count()); 1 disables the pool
 
     def __post_init__(self) -> None:

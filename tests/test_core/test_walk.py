@@ -17,6 +17,7 @@ def _ctx(virtual_roots):
     return WalkContext(
         skip=frozenset(),
         max_files=10,
+        actual_size=False,
         cancel=threading.Event(),
         virtual_roots=frozenset(virtual_roots),
     )

@@ -85,15 +85,16 @@ Footer {
 }
 
 #path-bar {
-    height: 2;
+    height: 1;
     background: $surface;
     padding: 0 1;
     content-align: left middle;
 }
 
 #scan-progress {
-    width: 3;
-    height: 2;
+    width: 9;
+    height: 1;
+    margin: 0 1 0 0;
     color: $primary;
     background: transparent;
 }
@@ -109,6 +110,11 @@ Footer {
 #scan-state.scanning {
     color: $text-warning;
     background: $warning-muted;
+}
+
+#scan-state.paused {
+    color: $text-accent;
+    background: $accent-muted;
 }
 
 #scan-state.complete {
@@ -168,8 +174,19 @@ Footer {
     align-vertical: middle;
 }
 
+/* Every toolbar child is three rows tall, so the labels, the sort control and
+   the buttons all put their text on the same row. */
+#results-title,
+#sort-label {
+    height: 3;
+    content-align-vertical: middle;
+}
+
 #results-title {
     width: 1fr;
+    margin-right: 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
     color: $foreground;
     text-style: bold;
 }
@@ -182,13 +199,31 @@ Footer {
 
 #sort-select {
     width: 32;
+    height: 3;
     margin-right: 1;
+    /* Matches the flat buttons' block border so the picker sits in their row. */
+    border: block $surface;
+}
+
+/* A compact Select drops its focus border, so mark focus the way Textual's own
+   widgets do: tint the surface, no ring. */
+#sort-select:focus {
+    background-tint: $foreground 8%;
 }
 
 #toolbar Button {
     width: auto;
     margin-left: 1;
     pointer: pointer;
+}
+
+#delete-button {
+    min-width: 10;
+}
+
+#pause-button {
+    /* Wide enough for both labels so the toolbar does not shift on toggle. */
+    min-width: 10;
 }
 
 #tables-container {
@@ -272,6 +307,11 @@ Screen.-narrow #theme-button {
     display: none;
 }
 
+/* Keep the scan controls on screen; the theme still has a key and the palette. */
+Screen.-compact #theme-button {
+    display: none;
+}
+
 Screen.-narrow #sort-select {
     width: 1fr;
 }
@@ -315,6 +355,13 @@ SortOptions {
     color: $text-error;
     background: $error-muted;
     text-wrap: wrap;
+}
+
+#dialog-size-info {
+    height: 1;
+    margin: 0 0 1 0;
+    color: $text-success;
+    text-style: bold;
 }
 
 .dialog-warning {
