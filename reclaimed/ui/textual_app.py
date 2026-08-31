@@ -3,6 +3,8 @@
 import asyncio
 import os
 import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -166,6 +168,7 @@ class ReclaimedApp(App[None]):
         Binding("h", "hide_selected", group=RESULTS),
         Binding("u", "show_hidden", group=RESULTS),
         Binding("delete", "delete_selected", group=RESULTS),
+        Binding("o", "open_folder", group=RESULTS),
         Binding("t", "next_theme", group=APP),
         Binding("?", "help", group=APP),
         Binding("q", "quit", group=APP),
@@ -289,6 +292,15 @@ class ReclaimedApp(App[None]):
                     flat=True,
                     disabled=True,
                     tooltip="Delete the selected item (Delete key)",
+                )
+                yield Button(
+                    "Open Folder",
+                    id="open-folder-button",
+                    action="app.open_folder",
+                    compact=True,
+                    flat=True,
+                    disabled=True,
+                    tooltip="Reveal the selected item in your file manager (O)",
                 )
                 yield Button(
                     "Pause",
@@ -741,7 +753,7 @@ class ReclaimedApp(App[None]):
             # Update dirs table if data has changed
             self._update_table_if_changed("#dirs-table", self.largest_dirs)
 
-            self._update_delete_button()
+            self._update_selection_buttons()
         except Exception:
             # Tables might not be mounted yet, skip update
             pass
@@ -1152,13 +1164,39 @@ class ReclaimedApp(App[None]):
                                 f"Deleted {path.name}, freed {format_size(item_size)}",
                                 timeout=5,
                             )
-                            self._update_delete_button()
+                            self._update_selection_buttons()
                         except Exception as e:
                             self.notify(f"Error deleting {path}: {e}", timeout=5)
 
                 self.push_screen(
                     ConfirmationDialog(path, item_size, is_dir), handle_confirmation
                 )
+
+    def action_open_folder(self) -> None:
+        """Reveal the selected item's enclosing folder in the system file manager."""
+        item = self._selected_item()
+        if item is None:
+            self.notify("No item selected", timeout=3)
+            return
+
+        folder = item.path.parent
+        if not folder.exists():
+            self.notify(f"Folder no longer exists: {folder}", severity="warning", timeout=3)
+            return
+
+        if sys.platform == "darwin":
+            command = ["open", "-R", str(item.path)]
+        elif sys.platform == "win32":
+            command = ["explorer", f"/select,{item.path}"]
+        else:
+            command = ["xdg-open", str(folder)]
+
+        try:
+            subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as error:
+            self.notify(f"Could not open {folder}: {error}", severity="error", timeout=5)
+        else:
+            self.notify(f"Opened {folder}", timeout=3)
 
     def action_help(self) -> None:
         """Show help information."""
@@ -1173,6 +1211,7 @@ class ReclaimedApp(App[None]):
 
         [bold]Actions[/]
         - Delete: Delete selected item
+        - O: Open the enclosing folder of the selected item
         - S: Sort items
         - H: Hide selected directory (dirs only)
         - U: Unhide all directories
@@ -1190,36 +1229,38 @@ class ReclaimedApp(App[None]):
 
     # Tab button handlers removed as we now have a unified view
 
-    def _update_delete_button(self) -> None:
-        """Update the delete button label and state based on the current cursor."""
-        try:
-            btn = self.query_one("#delete-button", Button)
-        except Exception:
-            return
+    def _selected_item(self) -> Optional[FileInfo]:
+        """Return the item under the cursor of the active table, if there is one."""
         table_name = "files-table" if self.current_focus == "files" else "dirs-table"
         try:
             table = self.query_one(f"#{table_name}")
         except Exception:
-            btn.disabled = True
-            btn.label = "Delete"
-            return
+            return None
         displayed = self._displayed_items.get(table_name, [])
-        if table.cursor_coordinate is not None and table.cursor_coordinate.row < len(displayed):
-            item = displayed[table.cursor_coordinate.row]
-            btn.disabled = False
-            btn.label = f"Delete ({format_size(item.size)})"
-        else:
-            btn.disabled = True
-            btn.label = "Delete"
+        if table.cursor_coordinate is None or table.cursor_coordinate.row >= len(displayed):
+            return None
+        return displayed[table.cursor_coordinate.row]
+
+    def _update_selection_buttons(self) -> None:
+        """Update the buttons that act on the selection to match the current cursor."""
+        try:
+            delete_button = self.query_one("#delete-button", Button)
+            open_button = self.query_one("#open-folder-button", Button)
+        except Exception:
+            return
+        item = self._selected_item()
+        delete_button.disabled = item is None
+        delete_button.label = "Delete" if item is None else f"Delete ({format_size(item.size)})"
+        open_button.disabled = item is None
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        """Update delete button when the cursor moves to a new row."""
+        """Update the selection-driven buttons when the cursor moves to a new row."""
         table_id = event.data_table.id
         if table_id == "files-table":
             self.current_focus = "files"
         else:
             self.current_focus = "dirs"
-        self._update_delete_button()
+        self._update_selection_buttons()
 
     @on(Button.Pressed, "#delete-button")
     def delete_button_pressed(self) -> None:

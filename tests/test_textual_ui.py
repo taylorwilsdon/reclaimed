@@ -152,6 +152,36 @@ def test_selecting_table_row_uses_row_selected_event_api(tmp_path: Path) -> None
     asyncio.run(exercise_app())
 
 
+def test_open_folder_reveals_the_selected_item(tmp_path: Path) -> None:
+    """The toolbar button enables with a selection and reveals its enclosing folder."""
+
+    async def exercise_app() -> None:
+        app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            open_button = app.query_one("#open-folder-button", Button)
+            app._displayed_items["files-table"] = []
+            app.current_focus = "files"
+            app._update_selection_buttons()
+            assert open_button.disabled
+
+            target = tmp_path / "selected.txt"
+            target.write_text("data")
+            app._displayed_items["files-table"] = [FileInfo(target, 4, 1.0, False)]
+            table = app.query_one("#files-table", DataTable)
+            table.add_row("4 B", "", "100%", str(target))
+            app._update_selection_buttons()
+            assert not open_button.disabled
+
+            with patch("reclaimed.ui.textual_app.subprocess.Popen") as popen:
+                with patch("reclaimed.ui.textual_app.sys.platform", "darwin"):
+                    app.action_open_folder()
+
+            assert popen.call_args.args[0] == ["open", "-R", str(target)]
+
+    asyncio.run(exercise_app())
+
+
 def test_run_textual_ui() -> None:
     """The entry point constructs and runs the app."""
     with patch("reclaimed.ui.textual_app.ReclaimedApp") as mock_app:

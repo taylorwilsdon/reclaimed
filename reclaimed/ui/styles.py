@@ -303,6 +303,7 @@ Screen.-wide .table-panel:last-child {
 
 Screen.-narrow #results-title,
 Screen.-narrow #sort-label,
+Screen.-narrow #open-folder-button,
 Screen.-narrow #theme-button {
     display: none;
 }
