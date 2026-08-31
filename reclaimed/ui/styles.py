@@ -174,8 +174,19 @@ Footer {
     align-vertical: middle;
 }
 
+/* Every toolbar child is three rows tall, so the labels, the sort control and
+   the buttons all put their text on the same row. */
+#results-title,
+#sort-label {
+    height: 3;
+    content-align-vertical: middle;
+}
+
 #results-title {
     width: 1fr;
+    margin-right: 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
     color: $foreground;
     text-style: bold;
 }
@@ -188,7 +199,16 @@ Footer {
 
 #sort-select {
     width: 32;
+    height: 3;
     margin-right: 1;
+    /* Matches the flat buttons' block border so the picker sits in their row. */
+    border: block $surface;
+}
+
+/* A compact Select drops its focus border, so mark focus the way Textual's own
+   widgets do: tint the surface, no ring. */
+#sort-select:focus {
+    background-tint: $foreground 8%;
 }
 
 #toolbar Button {
