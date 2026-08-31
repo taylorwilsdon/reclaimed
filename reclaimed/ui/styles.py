@@ -85,15 +85,16 @@ Footer {
 }
 
 #path-bar {
-    height: 2;
+    height: 1;
     background: $surface;
     padding: 0 1;
     content-align: left middle;
 }
 
 #scan-progress {
-    width: 3;
-    height: 2;
+    width: 9;
+    height: 1;
+    margin: 0 1 0 0;
     color: $primary;
     background: transparent;
 }
@@ -109,6 +110,11 @@ Footer {
 #scan-state.scanning {
     color: $text-warning;
     background: $warning-muted;
+}
+
+#scan-state.paused {
+    color: $text-accent;
+    background: $accent-muted;
 }
 
 #scan-state.complete {
@@ -189,6 +195,15 @@ Footer {
     width: auto;
     margin-left: 1;
     pointer: pointer;
+}
+
+#delete-button {
+    min-width: 10;
+}
+
+#pause-button {
+    /* Wide enough for both labels so the toolbar does not shift on toggle. */
+    min-width: 10;
 }
 
 #tables-container {
@@ -272,6 +287,11 @@ Screen.-narrow #theme-button {
     display: none;
 }
 
+/* Keep the scan controls on screen; the theme still has a key and the palette. */
+Screen.-compact #theme-button {
+    display: none;
+}
+
 Screen.-narrow #sort-select {
     width: 1fr;
 }
@@ -315,6 +335,13 @@ SortOptions {
     color: $text-error;
     background: $error-muted;
     text-wrap: wrap;
+}
+
+#dialog-size-info {
+    height: 1;
+    margin: 0 0 1 0;
+    color: $text-success;
+    text-style: bold;
 }
 
 .dialog-warning {

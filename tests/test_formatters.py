@@ -50,6 +50,19 @@ def test_usage_table_has_compact_columns_and_conditional_storage() -> None:
     assert local_table.show_lines is False
 
 
+def test_onedrive_items_get_a_storage_column_and_badge() -> None:
+    output = StringIO()
+    console = Console(file=output, width=100, force_terminal=False)
+    formatter = TableFormatter(console)
+    item = FileInfo(Path("/scan/onedrive.bin"), 25, 0.0, False, True)
+
+    table = formatter.format_files_table([item], Path("/scan"), 100)
+    console.print(table)
+
+    assert [column.header for column in table.columns][-2:] == ["Storage", "Path"]
+    assert "OneDrive" in output.getvalue()
+
+
 def test_rendered_table_keeps_the_end_of_a_long_basename() -> None:
     output = StringIO()
     console = Console(file=output, width=80, force_terminal=False)

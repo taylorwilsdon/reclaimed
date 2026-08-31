@@ -117,6 +117,14 @@ def handle_scan_error(
     help="Concurrent directory-listing workers",
     show_default=True,
 )
+@click.option(
+    "--actual-size/--apparent-size",
+    default=True,
+    help=(
+        "Count bytes allocated on disk (default), or count full logical file "
+        "sizes even when cloud files are not downloaded"
+    ),
+)
 def main(
     path: Path,
     max_files: int,
@@ -126,6 +134,7 @@ def main(
     interactive: bool,
     output: Optional[Path],
     jobs: int,
+    actual_size: bool,
 ) -> None:
     """Analyze disk space usage and find large files/directories.
 
@@ -149,6 +158,7 @@ def main(
                 list(skip_dirs),
                 max_workers=jobs,
                 output_path=output,
+                actual_size=actual_size,
             )
             return
         else:
@@ -161,6 +171,7 @@ def main(
                 max_dirs=max_dirs,
                 skip_dirs=list(skip_dirs),
                 max_workers=jobs,
+                actual_size=actual_size,
             )
 
             scanner = DiskScanner(options, console)
