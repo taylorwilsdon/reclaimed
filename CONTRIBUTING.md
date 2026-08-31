@@ -88,34 +88,43 @@ Thank you for your interest in contributing to reclaimed! This document provides
 
 ## Release Process
 
-Releases are managed through the `release.sh` script:
+Releases are managed through `scripts/release.py`:
 
-1. Update the version in `reclaimed/version.py`
+```bash
+python3 scripts/release.py
+```
 
-2. Run the release script:
-   ```bash
-   ./release.sh
-   ```
+The script prompts for the next version, then:
 
-   This script will:
-   - Check for required tools (jq)
-   - Ensure you're on the main branch
-   - Clean previous build artifacts
-   - Build the package with UV
-   - Create and push git tags
-   - Create a GitHub release
-   - Update the Homebrew formula with the correct SHA and dependencies
-   - Prompt to publish to PyPI
+- Checks for git, uv, and gh, a clean working tree, gh auth, and a free tag
+- Resolves a PyPI token before anything irreversible happens (see below)
+- Bumps `reclaimed/version.py`, builds the sdist and wheel with UV
+- Commits, tags, and pushes
+- Uploads to PyPI and opens a draft GitHub release with the artifacts attached
+- Re-pins `homebrew/reclaimed.rb` to the new tag and to the dependency
+  versions UV resolves, then commits and pushes that formula update
 
-3. To update only the Homebrew formula dependencies:
-   ```bash
-   ./release.sh --update-deps-only
-   ```
+The PyPI token is read from `$PYPI_TOKEN` (or `$UV_PUBLISH_TOKEN`,
+`$PYPI_API_TOKEN`, `$TWINE_PASSWORD`), then from `.env` in the repo root, then
+from `~/.pypirc`. If none of those has one, the script prompts for it and
+offers to save it to `.env`, which is gitignored.
 
-4. After running the script, publish to Homebrew:
-   - Ensure you have a tap repository at github.com/yourusername/homebrew-tap
-   - Copy homebrew/reclaimed.rb to your tap repository
-   - Users can then install with: `brew install yourusername/tap/reclaimed`
+Useful flags: `--bump {patch,minor,major}` or `--version X.Y.Z` to skip the
+prompt, `--skip-pypi`, `--skip-homebrew`, `--no-browser`, and `-y`.
+
+To refresh only the Homebrew formula's dependency pins, without releasing:
+
+```bash
+python3 scripts/release.py --homebrew-only
+```
+
+The formula update is left uncommitted in that mode.
+
+After a release, publish to Homebrew:
+
+- Ensure you have a tap repository at github.com/yourusername/homebrew-tap
+- Copy homebrew/reclaimed.rb to your tap repository
+- Users can then install with: `brew install yourusername/tap/reclaimed`
 
 ## Questions?
 
