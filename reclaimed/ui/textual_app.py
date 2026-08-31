@@ -162,6 +162,7 @@ class ReclaimedApp(App[None]):
         Binding("tab", "toggle_focus", group=NAVIGATION),
         Binding("s", "sort", group=RESULTS),
         Binding("r", "refresh", group=RESULTS),
+        Binding("p", "toggle_pause", group=RESULTS),
         Binding("h", "hide_selected", group=RESULTS),
         Binding("u", "show_hidden", group=RESULTS),
         Binding("delete", "delete_selected", group=RESULTS),
@@ -211,6 +212,13 @@ class ReclaimedApp(App[None]):
             "dirs-table": [],
         }
         self._table_storage_state = {"files-table": False, "dirs-table": False}
+        self.scan_task: Optional[Worker] = None
+        self.scan_paused = False
+        # Created per scan, inside the event loop, so the worker can await it.
+        self._resume_gate: Optional[asyncio.Event] = None
+        self._paused_total = 0.0  # Seconds spent paused during the current scan
+        self._paused_at: Optional[float] = None
+        self._indicator_refresh: Optional[float] = None  # Dots rate, kept across a pause
         self.theme = self.THEMES[0]
 
     def compose(self) -> ComposeResult:
@@ -283,6 +291,15 @@ class ReclaimedApp(App[None]):
                     tooltip="Delete the selected item (Delete key)",
                 )
                 yield Button(
+                    "Pause",
+                    id="pause-button",
+                    action="app.toggle_pause",
+                    compact=True,
+                    flat=True,
+                    disabled=True,
+                    tooltip="Freeze the scan without losing progress (P)",
+                )
+                yield Button(
                     "Rescan",
                     id="refresh-button",
                     variant="primary",
@@ -347,10 +364,67 @@ class ReclaimedApp(App[None]):
         status.update_classes(
             {
                 "scanning": state == "scanning",
+                "paused": state == "paused",
                 "complete": state == "ready",
                 "failed": state == "failed",
             }
         )
+
+    def _scan_elapsed(self) -> float:
+        """Seconds the current scan has actually spent working, ignoring pauses."""
+        now = time.monotonic()
+        elapsed = now - self.start_time - self._paused_total
+        if self._paused_at is not None:
+            elapsed -= now - self._paused_at
+        return elapsed
+
+    def _set_pause_button(self, label: str, *, disabled: bool = False) -> None:
+        """Keep the toolbar pause control in sync with the scan state."""
+        try:
+            button = self.query_one("#pause-button", Button)
+        except Exception:
+            # Toolbar might not be mounted yet, or is being torn down.
+            return
+        button.label = label
+        button.disabled = disabled
+
+    def _set_dots_animated(self, animated: bool) -> None:
+        """Run or freeze the scanning dots so they match the scan itself."""
+        try:
+            indicator = self.query_one("#scan-progress", LoadingIndicator)
+        except Exception:
+            # Indicator might not be mounted yet, or is being torn down.
+            return
+        if animated:
+            indicator.auto_refresh = self._indicator_refresh
+        else:
+            self._indicator_refresh = indicator.auto_refresh
+            indicator.auto_refresh = None
+
+    def action_toggle_pause(self) -> None:
+        """Freeze the running scan in place, or let it carry on."""
+        if self._resume_gate is None or self.scan_task is None:
+            return
+        if not self.scan_task.is_running:
+            return
+
+        self.scan_paused = not self.scan_paused
+        if self.scan_paused:
+            self._paused_at = time.monotonic()
+            self._resume_gate.clear()
+            self._set_scan_state("paused")
+            self._set_pause_button("Resume")
+            self._set_dots_animated(False)
+            self.notify("Scan paused", timeout=2)
+        else:
+            if self._paused_at is not None:
+                self._paused_total += time.monotonic() - self._paused_at
+                self._paused_at = None
+            self._resume_gate.set()
+            self._set_scan_state("scanning")
+            self._set_pause_button("Pause")
+            self._set_dots_animated(True)
+            self.notify("Scan resumed", timeout=2)
 
     def _update_scan_metrics(
         self, scanned: int, total_size: int, progress: Optional[float] = None
@@ -379,6 +453,14 @@ class ReclaimedApp(App[None]):
 
         # Start timing with monotonic clock
         self.start_time = time.monotonic()
+
+        # A fresh scan always starts unpaused, with an open gate for the worker.
+        self.scan_paused = False
+        self._paused_total = 0.0
+        self._paused_at = None
+        self._resume_gate = asyncio.Event()
+        self._resume_gate.set()
+        self._set_pause_button("Pause", disabled=False)
 
         # Notify user that scan is starting
         self.notify("Starting directory scan...", timeout=2)
@@ -434,11 +516,9 @@ class ReclaimedApp(App[None]):
 
         # Create independent timer task
         async def update_timer():
-            start = time.monotonic()
             while True:
                 try:
-                    elapsed = time.monotonic() - start
-                    minutes, seconds = divmod(int(elapsed), 60)
+                    minutes, seconds = divmod(int(self._scan_elapsed()), 60)
                     timer_display.update(f"Time: {minutes:02d}:{seconds:02d}")
                 except Exception:
                     # Timer display might have been removed, stop updating
@@ -490,7 +570,7 @@ class ReclaimedApp(App[None]):
 
                 # Check if it's time to update tables
                 current_time = time.monotonic()
-                if current_time - last_ui_update > ui_update_interval:
+                if self.scan_paused or current_time - last_ui_update > ui_update_interval:
                     self.largest_files = files_buffer
                     self.largest_dirs = dirs_buffer
                     self.apply_sort(self.sort_method)
@@ -498,6 +578,11 @@ class ReclaimedApp(App[None]):
                     last_ui_update = current_time
                     last_file_count = progress.scanned
                     await asyncio.sleep(0)
+
+                # Suspend here while paused. The scan generator stays parked on
+                # its last yield, so no traversal happens until the gate opens.
+                if self._resume_gate is not None:
+                    await self._resume_gate.wait()
 
         except Exception as e:
             self.notify(f"Scan error: {str(e)}", severity="error")
@@ -602,9 +687,11 @@ class ReclaimedApp(App[None]):
                 )
 
             # Get elapsed time for notification
-            elapsed = time.monotonic() - self.start_time
+            elapsed = self._scan_elapsed()
 
             # Update the final dashboard state.
+            self.scan_paused = False
+            self._set_pause_button("Pause", disabled=True)
             try:
                 self._set_scan_state("ready")
                 self._update_scan_metrics(file_count, self.scanner._total_size, 1.0)
@@ -634,6 +721,8 @@ class ReclaimedApp(App[None]):
             # Hide loading indicator
             if loading:
                 loading.styles.display = "none"
+            self.scan_paused = False
+            self._set_pause_button("Pause", disabled=True)
             self._set_scan_state("failed")
             self.notify("Scan failed!", severity="error")
 
@@ -1088,6 +1177,7 @@ class ReclaimedApp(App[None]):
         - H: Hide selected directory (dirs only)
         - U: Unhide all directories
         - R: Refresh scan (clears hidden dirs)
+        - P: Pause or resume the running scan
         - T: Cycle theme
         - Ctrl+P: Open command palette and choose any theme
         - Q: Quit application
