@@ -273,10 +273,14 @@ class DiskScanner:
                     and os.path.realpath(path) == self._icloud_base
                 )
             )
-            child_onedrive = is_onedrive or is_onedrive_root_name(name) or (
-                self._onedrive_base is not None
-                and name.casefold() == os.path.basename(self._onedrive_base).casefold()
-                and os.path.normcase(os.path.realpath(path)) == self._onedrive_base
+            child_onedrive = (
+                is_onedrive
+                or is_onedrive_root_name(name)
+                or (
+                    self._onedrive_base is not None
+                    and name.casefold() == os.path.basename(self._onedrive_base).casefold()
+                    and os.path.normcase(os.path.realpath(path)) == self._onedrive_base
+                )
             )
             frontier.append(self._new_dir(path, dir_id, child_icloud, child_onedrive))
 
@@ -284,9 +288,7 @@ class DiskScanner:
         if not listing.subdirs:
             self._mark_dir_complete(dir_id)
 
-    def _new_dir(
-        self, path: str, parent: int, is_icloud: bool, is_onedrive: bool
-    ) -> int:
+    def _new_dir(self, path: str, parent: int, is_icloud: bool, is_onedrive: bool) -> int:
         """Register a directory and return its dense id."""
         dir_id = len(self._paths)
         self._paths.append(path)
@@ -478,9 +480,7 @@ class DiskScanner:
         """Create the worker pool, or None to run listings inline."""
         if self._workers == 1 and not always:
             return None
-        return ThreadPoolExecutor(
-            max_workers=self._workers, thread_name_prefix="reclaimed-walk"
-        )
+        return ThreadPoolExecutor(max_workers=self._workers, thread_name_prefix="reclaimed-walk")
 
     def _split(self, jobs: List[WalkJob]) -> List[List[WalkJob]]:
         """Split a batch into several dynamically scheduled chunks.
@@ -584,9 +584,7 @@ class DiskScanner:
                     or comparable_onedrive_root.startswith(self._onedrive_base + os.sep)
                 )
             )
-            self._frontier.append(
-                self._new_dir(root, -1, root_icloud, root_onedrive)
-            )
+            self._frontier.append(self._new_dir(root, -1, root_icloud, root_onedrive))
 
     # ------------------------------------------------------------------
     # Output
@@ -613,17 +611,13 @@ class DiskScanner:
         )
         self.save_scan_result(output_path, result, scanned_path)
 
-    def save_scan_result(
-        self, output_path: Path, result: ScanResult, scanned_path: Path
-    ) -> None:
+    def save_scan_result(self, output_path: Path, result: ScanResult, scanned_path: Path) -> None:
         """Save one self-contained scan snapshot to JSON.
 
         Unlike :meth:`save_results`, this method does not consult mutable
         scanner state. It is therefore safe to use after an interactive UI has
         hidden, sorted, or deleted displayed entries.
         """
-        from ..ui.styles import GREEN
-
         results = {
             "scan_info": {
                 "timestamp": datetime.now().isoformat(),
@@ -639,11 +633,7 @@ class DiskScanner:
                     "size_bytes": f.size,
                     "size_human": format_size(f.size),
                     "storage_type": (
-                        "icloud"
-                        if f.is_icloud
-                        else "onedrive"
-                        if f.is_onedrive
-                        else "local"
+                        "icloud" if f.is_icloud else "onedrive" if f.is_onedrive else "local"
                     ),
                 }
                 for f in result.files
@@ -654,24 +644,19 @@ class DiskScanner:
                     "size_bytes": d.size,
                     "size_human": format_size(d.size),
                     "storage_type": (
-                        "icloud"
-                        if d.is_icloud
-                        else "onedrive"
-                        if d.is_onedrive
-                        else "local"
+                        "icloud" if d.is_icloud else "onedrive" if d.is_onedrive else "local"
                     ),
                 }
                 for d in result.directories
             ],
             "access_issues": [
-                {"path": str(path), "error": error}
-                for path, error in result.access_issues.items()
+                {"path": str(path), "error": error} for path, error in result.access_issues.items()
             ],
         }
 
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
-            self.console.print(f"[{GREEN}]Results saved to {output_path.absolute()}[/]")
+            self.console.print(f"[green]Results saved to {output_path.absolute()}[/]")
         except Exception as error:
             raise DiskScannerError(f"Failed to save results: {error}") from error

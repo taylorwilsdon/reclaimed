@@ -2,25 +2,28 @@
 
 import os
 import stat
+import uuid
 from pathlib import Path
 from typing import Iterator, Optional, Tuple
 
-from ..core.errors import (
-    AccessError,
-    FileNotFoundError,
-    InvalidPathError,
-    IOError,
-    PermissionError,
-)
+from ..core.errors import AccessError, InvalidPathError
+
+# Aliased on import: the scanner's error types deliberately share names with
+# builtin exceptions, and importing them unqualified would shadow the builtins
+# that os.stat and os.scandir actually raise, making every `except` clause
+# below unreachable.
+from ..core.errors import FileNotFoundError as ScanFileNotFoundError
+from ..core.errors import IOError as ScanIOError
+from ..core.errors import PermissionError as ScanPermissionError
+
+try:  # pwd is Unix-only; absent on Windows.
+    import pwd
+except ImportError:  # pragma: no cover - exercised only on Windows
+    pwd = None  # type: ignore[assignment]
 
 
 class FileSystemOperations:
     """High-performance file system operations with proper error handling."""
-
-    # Cache for symlink checks to avoid repeated calls
-    _symlink_cache = {}
-    # Maximum size of symlink cache to prevent memory leaks
-    _MAX_SYMLINK_CACHE_SIZE = 10000
 
     @staticmethod
     def get_file_size(path: Path) -> int:
@@ -41,11 +44,11 @@ class FileSystemOperations:
             # Use os.stat directly for better performance
             return os.stat(path).st_size
         except FileNotFoundError as e:
-            raise FileNotFoundError(path, e) from e
+            raise ScanFileNotFoundError(path, e) from e
         except PermissionError as e:
-            raise PermissionError(path, e) from e
+            raise ScanPermissionError(path, e) from e
         except OSError as e:
-            raise IOError(path, str(e), e) from e
+            raise ScanIOError(path, str(e), e) from e
 
     @staticmethod
     def is_readable(path: Path) -> bool:
@@ -98,14 +101,20 @@ class FileSystemOperations:
         if not os.path.isdir(path):
             raise InvalidPathError(path, "Not a directory")
 
+        return cls._iter_scandir(path)
+
+    @staticmethod
+    def _iter_scandir(path: Path) -> Iterator[os.DirEntry]:
+        """Yield directory entries while translating iteration errors."""
         try:
-            # Use os.scandir for better performance
-            for entry in os.scandir(path):
-                yield entry
+            # Keeping the context manager alive for the duration of iteration
+            # ensures the scandir handle is closed promptly.
+            with os.scandir(path) as entries:
+                yield from entries
         except PermissionError as e:
-            raise PermissionError(path, e) from e
+            raise ScanPermissionError(path, e) from e
         except OSError as e:
-            raise IOError(path, str(e), e) from e
+            raise ScanIOError(path, str(e), e) from e
 
     @classmethod
     def get_path_info(cls, path: Path) -> Tuple[int, bool, bool, float]:
@@ -134,7 +143,7 @@ class FileSystemOperations:
 
     @classmethod
     def is_symlink(cls, path: Path) -> bool:
-        """Check if a path is a symlink with caching for better performance.
+        """Check if a path is a symlink.
 
         Args:
             path: Path to check
@@ -142,22 +151,10 @@ class FileSystemOperations:
         Returns:
             True if path is a symlink
         """
-        # Convert to string for faster dictionary lookup
-        path_str = str(path)
-
-        # Check cache first
-        if path_str in cls._symlink_cache:
-            return cls._symlink_cache[path_str]
-
         try:
-            # Use os.path.islink for better performance
-            result = os.path.islink(path)
-
-            # Cache the result
-            if len(cls._symlink_cache) < cls._MAX_SYMLINK_CACHE_SIZE:
-                cls._symlink_cache[path_str] = result
-
-            return result
+            # A cached answer becomes incorrect as soon as an entry is replaced
+            # in place, so query the directory entry each time.
+            return os.path.islink(path)
         except OSError:
             return False
 
@@ -171,13 +168,14 @@ class FileSystemOperations:
         Returns:
             Owner name if available, None otherwise
         """
-        try:
-            import pwd  # Unix-specific
+        if pwd is None:
+            return None
 
+        try:
             # Use os.stat directly for better performance
             stat_info = os.stat(path)
             return pwd.getpwuid(stat_info.st_uid).pw_name
-        except (ImportError, KeyError, OSError):
+        except (KeyError, OSError):
             return None
 
     @staticmethod
@@ -194,14 +192,30 @@ class FileSystemOperations:
         if not os.path.exists(path):
             return True  # Assume case-sensitive if path doesn't exist
 
-        test_path = os.path.join(path, "TeSt_CaSe_SeNsItIvE")
-        test_path_lower = os.path.join(path, "test_case_sensitive")
+        probe_name = f".ReClAiMeD_CaSe_PrObE_{uuid.uuid4().hex}"
+        test_path = os.path.join(path, probe_name)
+        test_path_lower = os.path.join(path, probe_name.lower())
+        probe_created = False
 
         try:
-            with open(test_path, "w"):
+            # Exclusive creation avoids truncating an existing user file even
+            # in the vanishingly unlikely event of a name collision.
+            with open(test_path, "x"):
                 pass
-            is_sensitive = not os.path.exists(test_path_lower)
-            os.unlink(test_path)
-            return is_sensitive
+            probe_created = True
+            return not os.path.exists(test_path_lower)
         except OSError:
             return True  # Assume case-sensitive on error
+        finally:
+            if probe_created:
+                # Cleanup errors must not change the probe result. Retrying once
+                # handles transient unlink failures without leaving our file
+                # behind; a persistent filesystem error remains non-fatal.
+                for _ in range(2):
+                    try:
+                        os.unlink(test_path)
+                        break
+                    except FileNotFoundError:
+                        break
+                    except OSError:
+                        continue

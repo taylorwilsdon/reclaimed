@@ -452,7 +452,7 @@ def test_save_results(tmp_path):
 
     dirs = [
         FileInfo(Path("/test/dir1"), 3000, 1234567892.0, False),
-        FileInfo(Path("/test/dir2"), 4000, 1234567893.0, True)
+        FileInfo(Path("/test/dir2"), 4000, 1234567893.0, True),
     ]
 
     # Set up scanner internal state
@@ -535,5 +535,5 @@ def test_scan_async_exists():
     """Test that the scan_async method exists."""
     scanner = DiskScanner()
     # Just verify the method exists
-    assert hasattr(scanner, 'scan_async')
+    assert hasattr(scanner, "scan_async")
     assert callable(scanner.scan_async)

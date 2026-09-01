@@ -3,11 +3,12 @@
 import asyncio
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from rich.text import Text
 from textual import on
@@ -127,7 +128,8 @@ class SortOptions(ModalScreen[Optional[str]]):
     @on(Button.Pressed, "#sort-apply")
     def apply_sort(self) -> None:
         """Apply the selected sort option."""
-        sort_option = self.query_one("#sort-options").pressed_button.id
+        pressed_button = self.query_one("#sort-options", RadioSet).pressed_button
+        sort_option = pressed_button.id if pressed_button is not None else None
         self.dismiss(sort_option)
 
 
@@ -141,7 +143,7 @@ class ReclaimedHeader(Header):
             f"[dim]{self.screen_sub_title.upper()}[/]"
         )
 
-    def _on_click(self) -> None:
+    def _on_click(self) -> None:  # type: ignore[override]
         """Keep the branded masthead at its intentional fixed height."""
 
 
@@ -187,7 +189,10 @@ class ReclaimedApp(App[None]):
     COL_PATH = -1
 
     def __init__(
-        self, path: Path, options: ScanOptions, on_exit_callback: Optional[Callable] = None
+        self,
+        path: Path,
+        options: ScanOptions,
+        on_exit_callback: Optional[Callable[[], None]] = None,
     ):
         """Initialize the app with the path to scan.
 
@@ -206,10 +211,10 @@ class ReclaimedApp(App[None]):
         self.largest_dirs: List[FileInfo] = []
         self.current_focus = "files"  # Tracks which table has focus
         self.sort_method = "sort-size"  # Default sort method
-        self.progress_manager = None  # Will be initialized after mount
-        self.hidden_dirs: set = set()  # Directories hidden from current view
-        self._hidden_cache: dict = {}  # Cache for _is_hidden results
-        self._last_table_items = {}
+        self.progress_manager: Optional[ProgressManager] = None  # Initialized after mount
+        self.hidden_dirs: Set[Path] = set()  # Directories hidden from current view
+        self._hidden_cache: Dict[str, bool] = {}  # Cache for _is_hidden results
+        self._last_table_items: Dict[str, List[FileInfo]] = {}
         self._displayed_items: Dict[str, List[FileInfo]] = {
             "files-table": [],
             "dirs-table": [],
@@ -222,6 +227,7 @@ class ReclaimedApp(App[None]):
         self._paused_total = 0.0  # Seconds spent paused during the current scan
         self._paused_at: Optional[float] = None
         self._indicator_refresh: Optional[float] = None  # Dots rate, kept across a pause
+        self.start_time = time.monotonic()
         self.theme = self.THEMES[0]
 
     def compose(self) -> ComposeResult:
@@ -326,7 +332,7 @@ class ReclaimedApp(App[None]):
                     with Horizontal(classes="section-header"):
                         yield Static("Directories", classes="section-title")
                         yield Static("0 results", id="dirs-result-count", classes="result-count")
-                    dirs_table = DataTable(
+                    dirs_table: DataTable[object] = DataTable(
                         id="dirs-table",
                         cursor_type="row",
                         zebra_stripes=True,
@@ -345,7 +351,7 @@ class ReclaimedApp(App[None]):
                     with Horizontal(classes="section-header"):
                         yield Static("Files", classes="section-title")
                         yield Static("0 results", id="files-result-count", classes="result-count")
-                    files_table = DataTable(
+                    files_table: DataTable[object] = DataTable(
                         id="files-table",
                         cursor_type="row",
                         zebra_stripes=True,
@@ -505,29 +511,29 @@ class ReclaimedApp(App[None]):
             exclusive=True,
         )
 
-    async def _scan_directory_worker(self):
+    async def _scan_directory_worker(self) -> Optional[Dict[str, Any]]:
         """Worker function to process async generator from scan_async with optimized UI updates."""
         # Track when we last updated the UI
-        last_ui_update = 0
+        last_ui_update = 0.0
         base_ui_update_interval = 0.5
 
         # Get UI elements once, with error handling
         try:
-            timer_display = self.query_one("#scan-timer")
+            timer_display = self.query_one("#scan-timer", Static)
             self.query_one("#scan-count")
         except Exception:
             # UI elements not mounted yet, wait a bit and retry
             await asyncio.sleep(0.1)
             try:
-                timer_display = self.query_one("#scan-timer")
+                timer_display = self.query_one("#scan-timer", Static)
                 self.query_one("#scan-count")
             except Exception:
                 # Still not available, abort scan
                 self.notify("UI not ready, please try again", severity="error")
-                return
+                return None
 
         # Create independent timer task
-        async def update_timer():
+        async def update_timer() -> None:
             while True:
                 try:
                     minutes, seconds = divmod(int(self._scan_elapsed()), 60)
@@ -738,10 +744,6 @@ class ReclaimedApp(App[None]):
             self._set_scan_state("failed")
             self.notify("Scan failed!", severity="error")
 
-    # Track last table update to avoid redundant updates
-    _last_table_update = {}
-    _last_table_items = {}
-
     def update_tables(self) -> None:
         """Update both data tables with current data, avoiding redundant updates."""
         # Check if tables exist before trying to update them
@@ -769,8 +771,7 @@ class ReclaimedApp(App[None]):
         current_items = self._last_table_items.get(table_id, [])
         table_name = table_id.lstrip("#")
         show_storage = any(
-            item.is_icloud or item.is_onedrive
-            for item in self.largest_files + self.largest_dirs
+            item.is_icloud or item.is_onedrive for item in self.largest_files + self.largest_dirs
         )
         if (
             current_items == filtered_items
@@ -792,7 +793,7 @@ class ReclaimedApp(App[None]):
             items: List of FileInfo objects to display
         """
         # Use query instead of query_one to handle missing tables gracefully
-        tables = self.query(table_id)
+        tables = self.query(DataTable).filter(table_id)
         if not tables:
             # Table doesn't exist yet, skip update
             return
@@ -802,12 +803,11 @@ class ReclaimedApp(App[None]):
 
         table_name = table_id.lstrip("#")
         show_storage = any(
-            item.is_icloud or item.is_onedrive
-            for item in self.largest_files + self.largest_dirs
+            item.is_icloud or item.is_onedrive for item in self.largest_files + self.largest_dirs
         )
         if self._table_storage_state[table_name] != show_storage:
             table.clear(columns=True)
-            columns = []
+            columns: List[Tuple[str, str]] = []
             if table_name == "dirs-table":
                 columns.append(("Status", "status"))
             columns.extend([("Size", "size"), ("Bar", "bar"), ("%", "percent")])
@@ -831,7 +831,7 @@ class ReclaimedApp(App[None]):
         for item_info in display_items:
             self._add_row_to_table(table, item_info)
 
-    def _add_row_to_table(self, table, item_info: FileInfo) -> None:
+    def _add_row_to_table(self, table: DataTable[object], item_info: FileInfo) -> None:
         """Add a single row to a table.
 
         Args:
@@ -841,37 +841,39 @@ class ReclaimedApp(App[None]):
         total_size = self.scanner._total_size
         fraction = item_info.size / total_size if total_size else 0.0
         width = table.size.width or (self.size.width if hasattr(self, "size") else 80)
-        show_storage = self._table_storage_state[table.id]
-        show_status = table.id == "dirs-table"
+        table_id = table.id
+        assert table_id is not None
+        show_storage = self._table_storage_state[table_id]
+        show_status = table_id == "dirs-table"
         reserved_width = 53 if show_storage else 41
         if show_status:
             reserved_width += 13
         path_width = max(12, width - reserved_width)
         theme = self.current_theme
 
-        row = []
+        row: List[object] = []
         if show_status:
             row.append(
                 Text(
                     "✓ Done" if item_info.is_complete else "… Scanning",
-                    style=theme.success if item_info.is_complete else theme.warning,
+                    style=(theme.success if item_info.is_complete else theme.warning) or "",
                 )
             )
-        row.extend([
-            format_size(item_info.size),
-            Text(format_bar(fraction, 20), style=theme.secondary),
-            format_percentage(fraction),
-        ])
+        row.extend(
+            [
+                format_size(item_info.size),
+                Text(format_bar(fraction, 20), style=theme.secondary or ""),
+                format_percentage(fraction),
+            ]
+        )
         if show_storage:
             if item_info.is_icloud:
-                storage_status, storage_style = "☁ iCloud", theme.primary
+                storage_status, storage_style = "☁ iCloud", theme.primary or ""
             elif item_info.is_onedrive:
-                storage_status, storage_style = "☁ OneDrive", theme.secondary
+                storage_status, storage_style = "☁ OneDrive", theme.secondary or ""
             else:
-                storage_status, storage_style = "Local", theme.success
-            row.append(
-                Text(storage_status, style=storage_style)
-            )
+                storage_status, storage_style = "Local", theme.success or ""
+            row.append(Text(storage_status, style=storage_style))
         row.append(format_display_path(item_info.path, self.path, path_width))
         table.add_row(*row, key=str(item_info.path))
 
@@ -1044,7 +1046,7 @@ class ReclaimedApp(App[None]):
             return
 
         try:
-            table = self.query_one("#dirs-table")
+            table = self.query_one("#dirs-table", DataTable)
         except Exception:
             self.notify("Directories table not available yet", timeout=3)
             return
@@ -1102,7 +1104,8 @@ class ReclaimedApp(App[None]):
         # Get the current table based on the focus
         try:
             table = self.query_one(
-                "#files-table" if self.current_focus == "files" else "#dirs-table"
+                "#files-table" if self.current_focus == "files" else "#dirs-table",
+                DataTable,
             )
         except Exception:
             self.notify("Table not available yet", timeout=3)
@@ -1118,59 +1121,68 @@ class ReclaimedApp(App[None]):
                 path = selected.path
                 item_size = selected.size
 
-                is_dir = path.is_dir()
+                # lstat classifies the selected directory entry itself. A
+                # symlink to a directory must be unlinked, never passed to
+                # rmtree as though it were the target directory.
+                try:
+                    is_dir = stat.S_ISDIR(path.lstat().st_mode)
+                except OSError as error:
+                    self.notify(f"Error inspecting {path}: {error}", timeout=5)
+                    return
 
                 # Show confirmation dialog
-                def handle_confirmation(confirmed: bool) -> None:
-                    if confirmed:
-                        try:
-                            # Delete the file/directory
-                            if is_dir:
-                                shutil.rmtree(path)
-                            else:
-                                os.remove(path)
+                def handle_confirmation(confirmed: Optional[bool]) -> None:
+                    if not confirmed:
+                        return
 
-                            # Remove the item from our data
-                            items = (
-                                self.largest_files
-                                if self.current_focus == "files"
-                                else self.largest_dirs
-                            )
-                            items[:] = [item for item in items if item.path != path]
+                    try:
+                        # Delete the file/directory
+                        if is_dir:
+                            shutil.rmtree(path)
+                        else:
+                            os.remove(path)
+                    except OSError as error:
+                        self.notify(f"Error deleting {path}: {error}", timeout=5)
+                        return
 
-                            # Remove the row from the table using the path as the key
-                            try:
-                                table = self.query_one(
-                                    "#files-table"
-                                    if self.current_focus == "files"
-                                    else "#dirs-table"
-                                )
-                                table.remove_row(str(path))
-                            except Exception:
-                                # Table might not exist, just continue
-                                pass
+                    # Drop the item from the backing list and from the rendered
+                    # slice. Every row lookup indexes _displayed_items by the
+                    # table's row number, so leaving the deleted entry in place
+                    # shifts each later row by one and the next delete would act
+                    # on a different file than the one highlighted.
+                    items = (
+                        self.largest_files if self.current_focus == "files" else self.largest_dirs
+                    )
+                    items[:] = [item for item in items if item.path != path]
+                    displayed[:] = [item for item in displayed if item.path != path]
 
-                            # If we have remaining rows, ensure cursor is in a valid position
-                            if len(table.rows) > 0:
-                                current_row = (
-                                    table.cursor_coordinate.row if table.cursor_coordinate else 0
-                                )
-                                # If cursor would be past the end, move it to last row
-                                if current_row >= len(table.rows):
-                                    current_row = len(table.rows) - 1
-                                table.move_cursor(row=current_row, column=0)
+                    # Remove the row from the table using the path as the key
+                    try:
+                        current_table = self.query_one(
+                            "#files-table" if self.current_focus == "files" else "#dirs-table",
+                            DataTable,
+                        )
+                        current_table.remove_row(str(path))
+                    except Exception:
+                        # Table might not exist, just continue
+                        current_table = None
 
-                            self.notify(
-                                f"Deleted {path.name}, freed {format_size(item_size)}",
-                                timeout=5,
-                            )
-                            self._update_selection_buttons()
-                        except Exception as e:
-                            self.notify(f"Error deleting {path}: {e}", timeout=5)
+                    # If we have remaining rows, ensure cursor is in a valid position
+                    if current_table is not None and current_table.row_count > 0:
+                        coordinate = current_table.cursor_coordinate
+                        current_row = coordinate.row if coordinate else 0
+                        # If cursor would be past the end, move it to last row
+                        if current_row >= current_table.row_count:
+                            current_row = current_table.row_count - 1
+                        current_table.move_cursor(row=current_row, column=0)
 
-                self.push_screen(
-                    ConfirmationDialog(path, item_size, is_dir), handle_confirmation
-                )
+                    self.notify(
+                        f"Deleted {path.name}, freed {format_size(item_size)}",
+                        timeout=5,
+                    )
+                    self._update_selection_buttons()
+
+                self.push_screen(ConfirmationDialog(path, item_size, is_dir), handle_confirmation)
 
     def action_open_folder(self) -> None:
         """Reveal the selected item's enclosing folder in the system file manager."""
@@ -1233,7 +1245,7 @@ class ReclaimedApp(App[None]):
         """Return the item under the cursor of the active table, if there is one."""
         table_name = "files-table" if self.current_focus == "files" else "dirs-table"
         try:
-            table = self.query_one(f"#{table_name}")
+            table = self.query_one(f"#{table_name}", DataTable)
         except Exception:
             return None
         displayed = self._displayed_items.get(table_name, [])
@@ -1270,6 +1282,8 @@ class ReclaimedApp(App[None]):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection in data tables."""
         table_id = event.data_table.id
+        if table_id is None:
+            return
         row = event.cursor_row
 
         # Update current_focus based on which table was selected
@@ -1287,7 +1301,7 @@ class ReclaimedApp(App[None]):
         """Focus the currently active table based on current_focus."""
         table_id = "#files-table" if self.current_focus == "files" else "#dirs-table"
         try:
-            table = self.query_one(table_id)
+            table = self.query_one(table_id, DataTable)
             # Only set focus if the table has rows
             if len(table.rows) > 0:
                 self.set_focus(table)

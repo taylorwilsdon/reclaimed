@@ -40,6 +40,15 @@ dependencies = [
     "typing_extensions>=4.12.2"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "mypy>=0.950,<2",
+    "ruff>=0.1.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/taylorwilsdon/reclaimed"
 Repository = "https://github.com/taylorwilsdon/reclaimed.git"
@@ -49,7 +58,7 @@ Issues = "https://github.com/taylorwilsdon/reclaimed/issues"
 reclaimed = "reclaimed.cli:main"
 
 [tool.setuptools]
-packages = ["reclaimed", "reclaimed.core", "reclaimed.io", "reclaimed.metrics", "reclaimed.ui", "reclaimed.utils"]
+packages = ["reclaimed", "reclaimed.core", "reclaimed.io", "reclaimed.ui", "reclaimed.utils"]
 
 [tool.setuptools.dynamic]
 version = {attr = "reclaimed.version.__version__"}

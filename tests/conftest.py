@@ -3,9 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from reclaimed.metrics.buffer import MetricsBuffer
-from reclaimed.metrics.collector import MetricsCollector
-
 
 @pytest.fixture
 def temp_dir():
@@ -29,18 +26,6 @@ def sample_file_structure(temp_dir):
     (dir2 / "file3.txt").write_text("Test" * 300)  # 1200 bytes
 
     return temp_dir
-
-
-@pytest.fixture
-def metrics_buffer():
-    """Provide a clean metrics buffer for testing."""
-    return MetricsBuffer()
-
-
-@pytest.fixture
-def metrics_collector():
-    """Provide a metrics collector instance for testing."""
-    return MetricsCollector()
 
 
 @pytest.fixture

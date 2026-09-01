@@ -134,6 +134,7 @@ def test_pause_freezes_the_running_scan(tmp_path: Path) -> None:
 
 def test_selecting_table_row_uses_row_selected_event_api(tmp_path: Path) -> None:
     """Selecting a result uses the row index exposed by Textual's event."""
+
     async def exercise_app() -> None:
         app = ReclaimedApp(tmp_path, ScanOptions(max_files=5, max_dirs=5))
         async with app.run_test(size=(120, 36)) as pilot:

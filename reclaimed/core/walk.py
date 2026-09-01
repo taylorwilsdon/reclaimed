@@ -43,9 +43,7 @@ def is_onedrive_root_name(name: str) -> bool:
 
 def _under_virtual_fs(abs_path: str, roots: FrozenSet[str]) -> bool:
     """True if ``abs_path`` is one of ``roots`` or lives beneath one."""
-    return any(
-        abs_path == root or abs_path.startswith(root + os.sep) for root in roots
-    )
+    return any(abs_path == root or abs_path.startswith(root + os.sep) for root in roots)
 
 
 class WalkJob(NamedTuple):
@@ -142,11 +140,7 @@ def list_dir(job: WalkJob, ctx: WalkContext) -> DirListing:
                         continue
 
                     stat_result = entry.stat(follow_symlinks=False)
-                    size = (
-                        local_disk_size(stat_result)
-                        if ctx.actual_size
-                        else stat_result.st_size
-                    )
+                    size = local_disk_size(stat_result) if ctx.actual_size else stat_result.st_size
                     own_bytes += size
                     file_count += 1
                     if size >= ctx.floor:
@@ -216,7 +210,7 @@ def local_disk_size(stat_result: os.stat_result) -> int:
     st_blocks = getattr(stat_result, "st_blocks", None)
     if st_blocks is not None:
         # POSIX specifies st_blocks in 512-byte units, independent of block size.
-        return st_blocks * 512
+        return int(st_blocks) * 512
 
     attributes = getattr(stat_result, "st_file_attributes", None)
     if attributes is not None and attributes & _WIN_RECALL_ATTRS:

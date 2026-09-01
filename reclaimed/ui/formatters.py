@@ -75,9 +75,7 @@ class TableFormatter:
             padding=(0, 1),
             expand=True,
         )
-        table.add_column(
-            "Size", justify="right", style=CYAN, no_wrap=True, width=10, max_width=10
-        )
+        table.add_column("Size", justify="right", style=CYAN, no_wrap=True, width=10, max_width=10)
         table.add_column(
             "Bar",
             style=CYAN,
@@ -85,17 +83,13 @@ class TableFormatter:
             width=self.BAR_WIDTH,
             max_width=self.BAR_WIDTH,
         )
-        table.add_column(
-            "%", justify="right", style=GREEN, no_wrap=True, width=6, max_width=6
-        )
+        table.add_column("%", justify="right", style=GREEN, no_wrap=True, width=6, max_width=6)
         if show_storage:
-            table.add_column(
-                "Storage", style=YELLOW, no_wrap=True, width=10, max_width=10
-            )
+            table.add_column("Storage", style=YELLOW, no_wrap=True, width=10, max_width=10)
         table.add_column("Path", style=BASE0, no_wrap=True, overflow="ellipsis")
 
-        denominator = total_size if total_size is not None else max(
-            (item.size for item in items), default=0
+        denominator = (
+            total_size if total_size is not None else max((item.size for item in items), default=0)
         )
         # Leave two cells of safety for Rich's borders and column separators so
         # it never adds a second tail ellipsis after our middle truncation.
@@ -123,9 +117,7 @@ class TableFormatter:
         total_size: Optional[int] = None,
     ) -> Table:
         """Format the largest files as a proportional usage table."""
-        return self._format_usage_table(
-            "Largest Files", CYAN, files, root_path, total_size
-        )
+        return self._format_usage_table("Largest Files", CYAN, files, root_path, total_size)
 
     def format_dirs_table(
         self,
@@ -134,9 +126,7 @@ class TableFormatter:
         total_size: Optional[int] = None,
     ) -> Table:
         """Format the largest directories as a proportional usage table."""
-        return self._format_usage_table(
-            "Largest Directories", BLUE, dirs, root_path, total_size
-        )
+        return self._format_usage_table("Largest Directories", BLUE, dirs, root_path, total_size)
 
     def format_access_issues(self, issues: Dict[Path, str]) -> Optional[Table]:
         """Format access issues grouped by error message."""

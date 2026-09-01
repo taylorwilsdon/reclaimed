@@ -21,9 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def handle_scan_error(
-    error: Exception, console: Console, root_path: Optional[Path] = None
-) -> int:
+def handle_scan_error(error: Exception, console: Console, root_path: Optional[Path] = None) -> int:
     """Handle scanning errors with appropriate messages.
 
     Args:

@@ -10,14 +10,12 @@ Thank you for your interest in contributing to reclaimed! This document provides
    cd reclaimed
    ```
 
-2. Install dependencies:
+2. Create a development environment and install the project with its dev
+   dependencies. `pyproject.toml` is the single authoritative dependency list:
    ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Create a development environment:
-   ```bash
-   hatch shell
+   python -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -e ".[dev]"
    ```
 
 ## Development Workflow
@@ -29,17 +27,19 @@ Thank you for your interest in contributing to reclaimed! This document provides
 
 2. Make your changes and ensure all tests pass:
    ```bash
-   hatch run test
+   pytest
    ```
 
 3. Run the full test suite with coverage:
    ```bash
-   hatch run test-cov
+   pytest --cov=reclaimed --cov-report=term-missing
    ```
 
-4. Run linting checks:
+4. Run linting and type checks:
    ```bash
-   hatch run lint
+   ruff check .
+   black --check .
+   mypy reclaimed
    ```
 
 5. Commit your changes:
