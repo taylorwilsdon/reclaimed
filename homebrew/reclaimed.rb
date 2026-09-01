@@ -3,8 +3,8 @@ class Reclaimed < Formula
 
   desc "Powerful disk usage analyzer with iCloud support"
   homepage "https://github.com/taylorwilsdon/reclaimed"
-  url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v0.2.10.tar.gz"
-  sha256 "0a69fbaeddaa3c20493567d20499e86d5867d3967d7e9053710f85147eb7aa55"
+  url "https://github.com/taylorwilsdon/reclaimed/archive/refs/tags/v0.2.11.tar.gz"
+  sha256 "5ef5b5522bb4856b2a81a30dfed920988b53a94564ec4c62e38fc72c7369f272"
   license "MIT"
 
   depends_on "python"
@@ -36,8 +36,8 @@ class Reclaimed < Formula
   end
 
   resource "platformdirs" do
-    url "https://files.pythonhosted.org/packages/ea/06/cf1564dcc2e2261c8c8c6c05628dc8b418943bdae2a4e58640ceb2f770fa/platformdirs-4.11.5.tar.gz"
-    sha256 "e8b31f4f8bcbbedef91a6b57a706255e4f148d2a4e01648382a0a47342539173"
+    url "https://files.pythonhosted.org/packages/69/b7/802a56eca9f2fac455b8bab5375a2647b0f0e14a2cd63ef077de3c4a7658/platformdirs-4.11.7.tar.gz"
+    sha256 "4f41487eeeeeb07f3a6625e61d9bc0ae6809f92d3386dbd74392fbb76108104d"
   end
 
   resource "pygments" do
